@@ -33,6 +33,123 @@ verified on macOS. Recursive discovery, mismatches, malformed YAML, missing path
 and failure exit statuses have also been exercised. Linux and Windows validation
 remain pending.
 
+## Workspace UX direction and initial prototype
+
+Keep the quick terminal REPL; a richer workspace is an additional interface, not
+a replacement. The pre-workspace checkpoint is `5e3cc5c`. The optional desktop
+package `Apps/SigilsStudio` now uses SwiftCrossUI 0.9.0 and MessagePack.swift.
+The initial macOS viewport embeds Neovim 0.10+, with Open/Save, Run, a vertical
+top-first stack viewer, output/diagnostics, and one local recovery draft.
+It now also supports instruction/line stepping, line-based Run to Cursor,
+execution highlighting, and window-wide Run/debug/save shortcuts.
+CLI dependencies and language semantics remain unchanged.
+
+The portable protocol/grid and script execution layers, native input, file saves,
+recovery, and editor process shutdown are tested. A real 1100 x 760 content window
+was launched; external screenshot capture was unavailable in this environment.
+Linux/Windows native viewport adapters and packaging remain pending. The prototype
+explicitly reports unsupported platforms instead of substituting another editor.
+Use the native SwiftPM build system on Swift 6.4 to avoid SwiftBuild compiling
+the UI dependency's Android shim on macOS.
+
+### Quick REPL follow-up
+
+- Add session history with Up/Down, basic cursor movement, and Ctrl-A/Ctrl-E.
+  Preserve redirected-input behavior, EOF, Unicode text, and terminal restoration.
+  Evaluate line editors for actual platform support; do not assume a macOS library
+  also works on Linux or Windows.
+- The designer approved `!stack:clear` as a language operation for both scripts and
+  the REPL. It is not implemented yet. Clear stack entries, including stored errors,
+  without clearing variable bindings or producing output; an empty stack is fine.
+  Keep `!print` unchanged. Other namespaced built-ins, including `!console:print`,
+  require separate discussion. Do not add or modify YAML cases without permission.
+
+### Workspace architecture options
+
+1. **Desktop GUI with embedded Neovim (chosen for the initial slice):** a Swift-owned window with an editor,
+   attached stack sidebar, output/diagnostic pane, and debugger controls.
+   SwiftCrossUI is the prototype dependency. Its DefaultBackend
+   uses AppKit on macOS, WinUI on Windows, and GTK on Linux; it is still a
+   work-in-progress and custom editor rendering needs a feasibility prototype.
+   Apple SwiftUI alone would not meet the desktop cross-platform goal.
+2. **Swift-owned terminal workspace with embedded Neovim:** SwiftTUI is a
+   candidate for layout, but the inspected version keeps custom primitive controls
+   and keyboard dispatch internal. A Neovim viewport would need framework
+   extensions or a different host, not simply a TextField. Prove this before
+   committing to a fork or building the full workspace.
+3. **Neovim-hosted workspace:** a Neovim plugin/front-end with a Swift execution
+   backend. Splits/floating windows supply stack and output views. This avoids
+   writing an editor renderer but makes the product primarily a Neovim plugin.
+
+All options keep language semantics and debugging in Swift. Prefer a separate
+optional app package for a GUI so its platform libraries and build requirements
+do not burden CLI users or headless interpreter/spec tests.
+
+### Embedded editor boundary
+
+Neovim owns editing, buffers, undo, modes, and cursor movement; Swift owns Sigils
+execution and workspace/debugger state. The installed Neovim is 0.10.2.
+
+- Use `nvim --embed` with a MessagePack-RPC channel over child-process pipes.
+  Query API capabilities and attach a UI; do not combine UI embedding with
+  `--headless`. No network listener is needed.
+- Start with one `ext_linegrid` viewport. The host still must render grid cells,
+  highlights, scrolling, and the cursor, and forward keyboard/mouse input and
+  resizes. Apply redraws at `flush` boundaries. Embedding is not a ready-made
+  editor widget.
+- Prototype Unicode, cell widths, clipboard/paste, focus and key handling,
+  resize, and child shutdown before assuming cross-platform viability.
+  GUI rendering/input may need small platform-specific adapters.
+- Start with predictable editor configuration; loading personal Neovim config
+  should be an explicit later option. Surface missing Neovim, RPC errors, and
+  child-process failures rather than silently switching editors.
+
+### Execution and debugger boundary
+
+- `ExecutionSession` now pauses the existing parser/executor at real instruction
+  boundaries. Ordinary execution and debugging share this path, preserving lazy
+  parsing, first-error stopping, successful prefix state/output, and
+  failed-instruction atomicity. Sessions expose source spans and next locations.
+- A debug run uses an immutable source snapshot and a fresh stack/bindings.
+  Track instruction source spans and original line/column locations. Distinguish
+  the editor cursor from the execution position.
+- Expose state and newly produced output after each step. Show the stack vertically,
+  top/index 0 first, with values/types and an empty-stack state. Keep diagnostic
+  information visible without confusing errors with strings.
+- Full-script debug errors follow script stopping semantics, not REPL error
+  insertion. A scratch command console can retain REPL semantics in its own
+  persistent session; mutating a paused debug session needs an explicit decision.
+- Source edits invalidate the paused run. Clearly mark stale state and require
+  restart rather than silently continuing against changed source.
+- Implemented commands: Run, Start Debug/Restart, Step Instruction, Step Line,
+  Run to Cursor, and Stop. Run to Cursor stops before the first instruction on or
+  after the cursor line; it never replays earlier instructions or goes backwards.
+  Step Line consumes the remaining instructions on the next executable line.
+  Stop rejects pending results rather than interrupting an instruction halfway.
+  Defer Step Over/Into/Out until functions exist.
+- macOS shortcuts are window-wide: Cmd-R runs, Cmd-D starts/restarts debugging,
+  Cmd-J steps an instruction, Cmd-Shift-J steps a line, Cmd-Shift-C runs to the
+  cursor line, Cmd-. stops, and Cmd-S saves. Personal Neovim mappings cannot
+  intercept these app commands.
+
+### Suggested workspace milestones
+
+1. Initial GUI feasibility slice is implemented on macOS: an editable embedded
+   Neovim viewport, stack/output panels, Run, Open/Save, resize, and lifecycle checks.
+2. Keep the small REPL improvements independent; do not expand GUI polish first.
+3. Resumable execution is implemented and tested without changing YAML expectations:
+   uninterrupted/stepped results, errors, output, source locations, and multiple
+   instructions on one line retain existing behavior.
+4. Basic stepping and execution highlighting are connected. Debugger hotkeys,
+   restart, cursor targeting, edit invalidation, and pending-request cancellation
+   are tested against real Neovim buffers. Next focus on language/functions design,
+   not every debugger command or additional editor polish.
+5. Add a read-only YAML use-case browser using the existing spec runner. Preserve
+   case isolation and blocking/non-blocking confidence reporting; re-discover cases
+   so designer edits and new files appear. No automatic spec rewriting.
+6. Validate on Linux and Windows as well as macOS. Include terminal/GUI cleanup,
+   Unicode, keyboard differences, dependency setup, and packaging in acceptance.
+
 ## Suggested next order
 
 1. Re-read all current cases and this plan; run `swift test` and `swift run sigils spec`.

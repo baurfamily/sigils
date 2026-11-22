@@ -43,7 +43,7 @@ public struct LanguageError: Error, Equatable, Sendable, CustomStringConvertible
     }
 }
 
-public struct ExecutionResult {
+public struct ExecutionResult: Sendable {
     public let output: String
     public let error: LanguageError?
 }
@@ -62,11 +62,11 @@ public struct Interpreter {
 
     /// Stops at the first error while retaining successful instructions and output.
     public mutating func evaluate(_ source: String) -> ExecutionResult {
-        var parser = Parser(source: source, stack: stack, variables: variables)
-        let result = parser.run()
-        stack = parser.stack
-        variables = parser.variables
-        return result
+        var session = ExecutionSession(source: source, stack: stack, variables: variables)
+        while !session.isFinished { _ = session.step() }
+        stack = session.stack
+        variables = session.variables
+        return ExecutionResult(output: session.output, error: session.error)
     }
 
     public mutating func executeInteractive(_ source: String) -> ExecutionResult {
@@ -76,8 +76,61 @@ public struct Interpreter {
     }
 }
 
-private struct Parser {
+public struct SourceLocation: Equatable, Sendable {
+    public let line: Int
+    public let column: Int
+}
+
+public struct SourceSpan: Equatable, Sendable {
+    public let start: SourceLocation
+    public let end: SourceLocation
+}
+
+/// Executes an immutable source snapshot, pausing between complete instructions.
+public struct ExecutionSession: Sendable {
+    private var parser: Parser
+    public private(set) var output = ""
+    public private(set) var error: LanguageError?
+    public private(set) var lastInstruction: SourceSpan?
+
+    public var stack: [Value] { parser.stack }
+    public var variables: [String: Value] { parser.variables }
+    public var nextLocation: SourceLocation? {
+        guard error == nil, let position = parser.nextPosition else { return nil }
+        return parser.locations[position]
+    }
+    public var isFinished: Bool { nextLocation == nil }
+
+    public init(source: String) {
+        self.init(source: source, stack: [], variables: [:])
+    }
+
+    fileprivate init(source: String, stack: [Value], variables: [String: Value]) {
+        parser = Parser(source: source, stack: stack, variables: variables)
+    }
+
+    /// Returns only this instruction's output; `output` retains the complete run.
+    @discardableResult
+    public mutating func step() -> ExecutionResult {
+        guard !isFinished else { return ExecutionResult(output: "", error: error) }
+        parser.skipWhitespace()
+        parser.instructionStart = parser.position
+        let start = parser.locations[parser.position]
+        var emitted = ""
+        do {
+            try parser.instruction(output: &emitted)
+        } catch {
+            self.error = error
+        }
+        lastInstruction = SourceSpan(start: start, end: parser.locations[parser.position])
+        output += emitted
+        return ExecutionResult(output: emitted, error: error)
+    }
+}
+
+private struct Parser: Sendable {
     let characters: [Character]
+    let locations: [SourceLocation]
     var position = 0
     var stack: [Value]
     var variables: [String: Value]
@@ -85,24 +138,26 @@ private struct Parser {
 
     init(source: String, stack: [Value], variables: [String: Value]) {
         characters = Array(source)
+        var locations: [SourceLocation] = []
+        var line = 1
+        var column = 1
+        for character in characters {
+            locations.append(SourceLocation(line: line, column: column))
+            if character.isNewline { line += 1; column = 1 }
+            else { column += 1 }
+        }
+        locations.append(SourceLocation(line: line, column: column))
+        self.locations = locations
         self.stack = stack
         self.variables = variables
     }
 
-    mutating func run() -> ExecutionResult {
-        var output = ""
-        while true {
-            skipWhitespace()
-            guard position < characters.count else {
-                return ExecutionResult(output: output, error: nil)
-            }
-            instructionStart = position
-            do {
-                try instruction(output: &output)
-            } catch {
-                return ExecutionResult(output: output, error: error)
-            }
+    var nextPosition: Int? {
+        var next = position
+        while next < characters.count, characters[next].isWhitespace {
+            next += 1
         }
+        return next < characters.count ? next : nil
     }
 
     mutating func instruction(output: inout String) throws(LanguageError) {
@@ -333,10 +388,7 @@ private struct Parser {
     }
 
     func error(_ message: String, code: ErrorCode = .syntaxError) -> LanguageError {
-        let prefix = characters[..<instructionStart]
-        let line = prefix.filter(\.isNewline).count + 1
-        let lastNewline = prefix.lastIndex(where: \.isNewline)
-        let column = instructionStart - (lastNewline.map { $0 + 1 } ?? 0) + 1
-        return LanguageError(code: code, line: line, column: column, message: message)
+        let location = locations[instructionStart]
+        return LanguageError(code: code, line: location.line, column: location.column, message: message)
     }
 }

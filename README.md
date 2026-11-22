@@ -34,6 +34,79 @@ next prompt remains available. Its display is `err:<category, line>`; the diagno
 also includes a column and message. Scripts do not append the REPL-only error value.
 No try/rescue, automatic continuation, or general struct syntax is implemented yet.
 
+## Experimental desktop workspace
+
+An optional SwiftCrossUI app lives in `Apps/SigilsStudio`. Its initial native
+Neovim viewport works on **macOS 13+**, with Neovim **0.10+** on `PATH`.
+The RPC, grid, and execution code is portable, but Linux/Windows editor adapters
+are not implemented yet; this is not a cross-platform GUI release.
+The CLI does not depend on GUI libraries.
+
+From the repository root:
+
+```sh
+swift run --package-path Apps/SigilsStudio --build-system native sigils-studio
+# Optionally open a script:
+swift run --package-path Apps/SigilsStudio --build-system native sigils-studio program.sigils
+# Test the workspace (requires Neovim):
+swift test --package-path Apps/SigilsStudio --build-system native
+```
+
+The explicit native build system avoids a Swift 6.4 SwiftBuild issue that attempts
+to compile the dependency's Android shim on macOS. No GTK installation is needed
+for the macOS AppKit backend. Set `SIGILS_NVIM` to an absolute executable path if
+Neovim is not on `PATH`.
+
+- Edit with real Neovim normal/insert/visual modes, navigation, undo, and search.
+  Personal Neovim configuration is not loaded in this prototype.
+- Open/Save buttons and Neovim `:e`/`:w` work. For an unnamed buffer, enter a file
+  path and press Save, or use `:w path`. Unsaved changes block ordinary Open.
+- **Run** executes the current unsaved buffer using the shared interpreter, with
+  fresh stack and variable bindings each time. The right sidebar shows stack
+  values top-first, indexed from zero; output and diagnostics appear below.
+  Script errors stop execution without adding a REPL error value.
+- Editing after Run marks the displayed results as belonging to the previous
+  source. There is no automatic execution.
+- On macOS, Cmd-S saves; Cmd-V pastes; Cmd-C copies a visual selection.
+  Mouse selection and scrolling are forwarded to Neovim.
+- Modified buffer text is preserved locally in
+  `~/Library/Application Support/SigilsStudio/draft.sigils` for recovery. Starting
+  without a file restores that draft. This is not a replacement for saving files;
+  the prototype keeps one recovery draft, not per-file recovery history.
+
+### Debugger and keyboard shortcuts
+
+Shortcuts work throughout the Studio window, including while a text field has
+focus. They are handled by the app rather than inserted into the Neovim buffer.
+
+| Action | macOS shortcut | Behavior |
+| --- | --- | --- |
+| Run | Cmd-R | Execute the whole buffer with fresh state. |
+| Start Debug / Restart | Cmd-D | Capture the buffer and pause before its first instruction. |
+| Step Instruction | Cmd-J | Execute one complete instruction (a literal push is an instruction). |
+| Step Line | Cmd-Shift-J | Execute remaining instructions on the next executable source line. |
+| Run to Cursor | Cmd-Shift-C | Stop before the first instruction on or after the cursor's line. |
+| Stop | Cmd-. | End the session; retain the last completed results. |
+| Save | Cmd-S | Save the buffer; supply a path for an unnamed buffer. |
+
+Step commands start a fresh debug session if none exists. Blank lines are skipped.
+The highlighted line with a `>` gutter marker is the **next instruction's line**,
+not the editor cursor. On an error it marks the failing instruction's line instead.
+Status text includes the next instruction's line and column.
+
+Run to Cursor operates on lines, not individual character positions. It does not
+execute the cursor line, rerun already executed instructions, or go backwards.
+Start Debug restarts a completed, errored, or stale session. Buffer edits invalidate
+paused debugging even if later undone; restart explicitly before stepping again.
+Output accumulates once per executed instruction, and script errors preserve their
+successful prefix without pushing a REPL error value.
+
+Stop discards pending operation results, rather than interrupting an individual
+instruction halfway through. Function-aware Step Into/Over/Out, breakpoints, a case
+browser, and a scratch command console are **not implemented**.
+The quick terminal REPL remains unchanged; history
+navigation and the approved `!stack:clear` operation are still pending.
+
 ## Supported language
 
 | Syntax | Behavior |

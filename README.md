@@ -13,7 +13,7 @@ swift build
 swift run sigils repl
 swift run sigils run program.sigils
 printf '"hello" !print\n' | swift run sigils run -
-printf '1 + 4 !print\n' | swift run sigils
+printf '1 4 + !print\n' | swift run sigils
 swift run sigils spec
 swift test
 ```
@@ -34,26 +34,30 @@ stack changes or buffered output; REPL errors leave the previous stack intact.
 | --- | --- |
 | `5`, `12.2`, `-8`, `0.1` | Push a number onto the stack. |
 | `"hello, world"` | Push a single-line, double-quoted string. |
-| `1 + 4` | Push `1`; `+` consumes the stack's top number and the following numeric literal, pushing their sum. |
-| `4 - 1`, `2 * 3`, `8 / 2` | Subtract, multiply, or divide the stack's top number by the following numeric literal. |
-| `"hello" + " " + "world"` | Concatenate strings, leaving the result on the stack without printing. |
+| `1 4 +` | Push both numbers; `+` consumes them and pushes their sum. |
+| `4 1 -`, `2 3 *`, `8 2 /` | Subtract, multiply, or divide the top two stack values. |
+| `"hello" " " + "world" +` | Concatenate strings, leaving the result on the stack without printing. |
 | `"hello" !print` | Consume the top value and print it with a newline. |
-| Spaces and newlines | Separate instructions; `1+4` also works. |
+| Spaces and newlines | Separate instructions; `1 4+` also works. |
 
-Binary operators leave deeper stack entries untouched. `+ 4` can therefore operate
-on a number left by an earlier REPL line. Right operands currently must be literals;
-operations evaluate in sequence, not with conventional infix precedence. `-` directly
-followed by a digit starts a signed literal: `4 -1` pushes two numbers, whereas
-`4 - 1` subtracts. Type mismatches, missing operands, unsupported syntax, and unknown
-functions are errors with line/column locations. Adding a number to a string does
-not implicitly convert the number to text.
+All binary operators are postfix and consume only the top two existing stack values:
+the top is the right operand, and the value below it is the left operand. Deeper
+entries are untouched. Operands can come from earlier REPL lines; an operator never
+reads ahead for a value. Fewer than two stack values is an error.
+
+There is no infix syntax or precedence system. `1 2 3 * +` produces `7`, while
+`1 2 + 3 *` and `3 2 1 + *` produce `9`. `1 + 2` fails on an empty starting stack.
+`-` directly followed by a digit starts a signed literal: `4 -1` pushes two numbers,
+whereas `4 1 -` subtracts. Type mismatches, missing operands, unsupported syntax, and
+unknown functions are errors with line/column locations. Adding a number to a string
+does not implicitly convert the number to text.
 
 Numbers currently use finite IEEE-754 `Double` values. Decimal arithmetic may round,
 and integers beyond 2^53 are not all exactly representable. Whole-number output omits
 the `.0` suffix. Numeric equality in specs is exact, not tolerance-based.
 
-Division is true floating-point division: `5 / 2` produces `2.5`. Dividing by zero
-(including `0 / 0` and negative zero) consumes the operands and pushes null instead
+Division is true floating-point division: `5 2 /` produces `2.5`. Dividing by zero
+(including `0 0 /` and negative zero) consumes the operands and pushes null instead
 of infinity or an error. Other numeric overflow remains an error.
 
 **Provisional null behavior:** numeric arithmetic propagates null, and string
@@ -80,7 +84,7 @@ Each nonempty YAML document is an independent case with an empty starting stack:
 ---
 name: addition and output
 code: |
-  1 + 4 !print
+  1 4 + !print
 output: "5"
 stack: []
 ```

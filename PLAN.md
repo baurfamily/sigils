@@ -8,7 +8,9 @@ specs without explicit permission, and stop feature work whenever existing cases
 
 - Swift package with one shared interpreter for REPL, files, STDIN, and YAML cases.
 - Numbers, single-line double-quoted literal strings, consuming `!print`,
-  stack-plus-following-literal arithmetic (`+`, `-`, `*`, `/`), and string concatenation.
+  postfix stack-only arithmetic (`+`, `-`, `*`, `/`), and postfix string concatenation.
+- Binary operators consume the top as the right operand and the next as the left;
+  they never read ahead. Infix behavior has been removed with designer approval.
 - True `Double` division; division by zero produces a null stack value.
 - YAML discovery on every run; isolated cases, output/stack assertions, failure
   diagnostics, and a test-suite entry point for the current cases.
@@ -23,17 +25,16 @@ remain pending.
 
 1. Re-read all current cases and this plan; run `swift test` and `swift run sigils spec`.
    Resolve failures before changing language behavior.
-2. Confirm numeric semantics: binary floating point versus decimal/arbitrary-precision
+2. Tackle basic postfix variable storage next. `5 -> x` is confirmed to consume the
+   top value and store it in `x`; `1 2 + -> x` should store the computed result.
+   Add designer-approved cases and settle identifier rules, reading variables,
+   overwriting, missing names, and scope before implementing those details.
+3. Revisit numeric semantics: binary floating point versus decimal/arbitrary-precision
    numbers, overflow, numeric syntax, and formatting. True division using `Double`
    is currently confirmed, but not exact decimal or large-integer arithmetic.
-3. Confirm operand evaluation and stack semantics before expanding arithmetic.
-   Current operators take their left operand from the stack and a literal on the right.
-   Decide whether right operands may be variables, calls, or expressions, and how
-   nested prefix operations are delimited. Avoid silently introducing conventional
-   infix precedence into a prefix-oriented language.
 4. Add designer-approved cases for strings and lexical rules: escapes, quote pairs,
    interpolation, symbols, comments, and invalid input. Implement only those rules.
-5. Discuss variable bindings and consuming versus peeking/random stack access.
+5. Discuss consuming versus peeking/random stack access.
    Specify underflow, index direction, and the meaning of bare `?`/`@` forms first.
 6. Resolve function stack ownership, arguments, return counts, and scope before
    implementation. Private function stacks with explicit transfers may be easier
@@ -45,6 +46,12 @@ remain pending.
 
 ## Design notes to revisit
 
+- Forward-looking operand sigils and `x<-` storage are deferred, not implemented.
+  Decide later whether "next produced value" means an individual push or the result
+  of a bounded computation, and how that boundary and zero/multiple results work.
+  Bare arithmetic operators will not infer a forward-reading mode from stack depth.
+- Postfix arithmetic supersedes the prefix/hybrid examples in the brainstorming
+  document; preserve that document as historical discussion rather than rewriting it.
 - Null coercion is provisional: zero division produces null, numeric arithmetic
   propagates it, string concatenation treats it as empty text, and `!print` consumes
   it without emitting bytes. This can hide the original invalid calculation or

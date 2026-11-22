@@ -54,15 +54,15 @@ private struct Parser {
                 stack.append(try scalar())
             case "+", "-", "*", "/":
                 let operation = characters[position]
-                position += 1
-                guard let left = stack.last else {
-                    throw error("Operator \(operation) needs a value on the stack")
+                guard stack.count >= 2 else {
+                    throw error("Operator \(operation) needs two values on the stack")
                 }
-                skipWhitespace()
-                let right = try scalar()
+                let left = stack[stack.count - 2]
+                let right = stack[stack.count - 1]
                 let result = try evaluate(operation, left: left, right: right)
-                stack.removeLast()
+                stack.removeLast(2)
                 stack.append(result)
+                position += 1
             case "!":
                 position += 1
                 let start = position

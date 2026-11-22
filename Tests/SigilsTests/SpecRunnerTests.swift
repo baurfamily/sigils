@@ -6,7 +6,7 @@ import SigilsSpecRunner
     let report = try SpecRunner.evaluate(yaml: """
     ---
     name: first
-    code: 1 + 4
+    code: 1 4 +
     output:
     stack: [5]
     ---
@@ -45,12 +45,12 @@ import SigilsSpecRunner
 @Test func nullStackEntryIsDistinctFromAnEmptyStack() throws {
     let report = try SpecRunner.evaluate(yaml: """
     name: null result
-    code: 1 / 0
+    code: 1 0 /
     output:
     stack: [null]
     ---
     name: consumed null
-    code: 1 / 0 !print
+    code: 1 0 / !print
     output:
     stack:
     """)

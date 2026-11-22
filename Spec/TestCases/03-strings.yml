@@ -8,7 +8,15 @@ stack:
 ---
 name: string concatenation
 code: |
-  "hello" + " " + "world"
+  "hello" " " + "world" +
+output:
+stack:
+  - hello world
+---
+name: string concatenation consumes existing stack values
+commentary: Both operators consume only existing stack values, preserving string order.
+code: |
+  "hello" " " "world" + +
 output:
 stack:
   - hello world

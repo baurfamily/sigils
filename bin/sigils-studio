@@ -1,0 +1,3 @@
+#!sh
+
+swift run --package-path Apps/SigilsStudio --build-system native sigils-studio

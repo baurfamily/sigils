@@ -1,0 +1,20 @@
+{:makeFactorial<0
+  0 ->index
+  1 ->product
+
+  {<0
+    :product
+    :index 1 + ->:index
+    :product :index * ->:product
+  }>1
+}>1
+
+!makeFactorial ->nextFactorial
+
+!nextFactorial !print
+!nextFactorial !print
+!nextFactorial !print
+!nextFactorial !print
+!nextFactorial !print
+!nextFactorial !print
+!nextFactorial !print

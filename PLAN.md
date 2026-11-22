@@ -234,6 +234,9 @@ execution and workspace/debugger state. The installed Neovim is 0.10.2.
    designer-approved cases. Use `<count` for consuming private inputs, `?<count`
    for private copies, and no annotation for a shared caller stack. Discuss
    function-aware Step Into/Out before expanding the debugger.
+   `Samples/fibonacci.sigils` and `Samples/factorial.sigils` now exercise returning
+   stateful closures with live lexical writes. Their drivers repeat calls explicitly;
+   arbitrary-input calculations still need agreed control-flow mechanics.
 7. Decide array construction/grouping, then loops and control flow; add cases
    incrementally rather than treating uncertain examples as finalized syntax.
 8. Verify Linux and Windows builds and interactive behavior, then add continuous

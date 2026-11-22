@@ -1,0 +1,24 @@
+{:makeFibonacci<0
+  0 ->previous
+  1 ->current
+
+  {<0
+    :previous
+    :previous :current + ->next
+    :current ->:previous
+    next ->:current
+  }>1
+}>1
+
+!makeFibonacci ->nextFibonacci
+
+!nextFibonacci !print
+!nextFibonacci !print
+!nextFibonacci !print
+!nextFibonacci !print
+!nextFibonacci !print
+!nextFibonacci !print
+!nextFibonacci !print
+!nextFibonacci !print
+!nextFibonacci !print
+!nextFibonacci !print

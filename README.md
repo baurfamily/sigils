@@ -314,6 +314,33 @@ single quotes, and alternative delimiters are not implemented. Comments,
 arrays, loops, and other arithmetic operators remain
 unimplemented pending confirmed cases and design decisions.
 
+## Samples
+
+Runnable scripts live in [Samples](Samples):
+
+```sh
+swift run sigils run Samples/fibonacci.sigils
+swift run sigils run Samples/factorial.sigils
+# Open a sample in the editor/debugger:
+swift run --package-path Apps/SigilsStudio --build-system native sigils-studio Samples/fibonacci.sigils
+```
+
+- [Fibonacci](Samples/fibonacci.sigils) prints F(0) through F(9):
+  `0, 1, 1, 2, 3, 5, 8, 13, 21, 34`, one number per line.
+- [Factorial](Samples/factorial.sigils) prints 0! through 6!:
+  `1, 1, 2, 6, 24, 120, 720`, one number per line.
+
+Both factories return a stateful anonymous function. Each call returns the current
+term and advances live bindings in its retained defining scope. The computation
+is reusable, not a list of hardcoded answers: add calls to produce more terms or
+call the factory again to create an independent sequence.
+
+The driver calls are explicitly repeated because loops, conditionals, and
+recursion are not implemented. These are useful non-trivial closure examples,
+not yet arbitrary-input `fib(n)` or `factorial(n)` functions. Values still use
+`Double`; sufficiently large terms lose integer precision or overflow.
+Scripts contain no comments because comment syntax is not implemented yet.
+
 ## YAML behavior cases
 
 ```sh

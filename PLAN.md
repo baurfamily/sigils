@@ -150,6 +150,58 @@ execution and workspace/debugger state. The installed Neovim is 0.10.2.
 6. Validate on Linux and Windows as well as macOS. Include terminal/GUI cleanup,
    Unicode, keyboard differences, dependency setup, and packaging in acceptance.
 
+## Basic functions: agreed direction, not implemented
+
+- Review cases are in `Spec/TestCases/07-functions.yml`, all medium confidence.
+  They include nested named definitions, lexical parent/root access, and now
+  designer-authorized successful examples of stored/returned anonymous functions.
+  These cover copied captures, live retained bindings, independent factory calls,
+  callback inputs, and callable aliases. Alias identity is marked as a proposal.
+  The proposed declaration convention registers
+  `{:name ...}` in its current scope, not a parent selected by the colon.
+  Return selection/shortfall and explicit-write failure consequences are called
+  out as review proposals. Runtime function support is not implemented.
+- Named functions are called with `!name`. The designer corrected the input
+  distinction: `{:name<count ...}>count` consumes the caller's top input values
+  into a private stack; `{:name?<count ...}>count` copies them without consumption.
+  Counts describe input cardinality, not random-access indices. With neither
+  annotation, `{:name ...}` shares the caller's stack.
+- Both forms initially execute synchronously. Eventually the copied-stack form
+  may execute asynchronously, reserving/promising caller-stack result slots based
+  on the output declaration; the shared-stack form remains synchronous.
+  Scheduling, promise access, result ordering, and asynchronous errors are deferred.
+- Shared-stack functions omit `>count`; body mutations are their result.
+  On a function failure, stop the script and preserve emitted prefix output.
+  Retain shared-stack prefix changes, but discard private copied-stack changes.
+  Proposed private-stack return placement: append the top declared count of
+  working-stack values in their existing order and discard the remainder.
+  Confirm this in the review cases before implementation.
+  Consuming private inputs transfer ownership at call entry and remain consumed
+  on a body failure. Insufficient inputs fail before any transfer. Async
+  eligibility for the two private input modes remains deferred.
+  Copying future mutable values needs a separate shallow/deep-copy decision;
+  current language values do not establish object-copy semantics.
+- Variable scope is copy-by-default: capture defining-scope values when the
+  function is defined, superseding the earlier call-entry snapshot proposal.
+  Each call receives fresh local bindings from that capture; ordinary local
+  writes do not alter the captured defaults used by later calls.
+  Variables obtain defining-scope data; stack inputs obtain calling-scope data.
+  Bare-name reads and writes address the local snapshot. `:name` is a scope hint,
+  not a separate variable identity, explicitly accessing the parent's binding.
+  `:name` addresses the immediate lexical (defining) parent; `::name` addresses
+  the lexical root, not a second ancestor. Corresponding outer-write forms are
+  `->:name` and `->::name`.
+- The designer considers outer `:name` references in the body sufficiently
+  explicit to identify closure capture; no separate closure marker or capture
+  list is required. Copy values by default, with explicit outer access retaining
+  live bindings. Nested/escaping function lifetime and the first-pass declaration
+  boundary still need confirmation. Threading and future mutable-object copy
+  semantics remain deferred.
+- Stored and returned anonymous function values are now included in the review
+  scope; their lifetime behavior needs implementation tests, not just anonymous
+  naming sugar. Recursion, arrays/maps as arguments, and threaded execution remain
+  separate discussions. Add behavior cases only with designer permission.
+
 ## Suggested next order
 
 1. Re-read all current cases and this plan; run `swift test` and `swift run sigils spec`.
@@ -171,9 +223,9 @@ execution and workspace/debugger state. The installed Neovim is 0.10.2.
    `06.01-stack-replacement.yml` now pass. Try the low-confidence insertion syntax
    from `06.02-stack-insertion.yml` in the REPL before finalizing the mnemonic and
    gap indexing. Its cases execute as non-blocking experiments, not skipped tests.
-6. Resolve function stack ownership, arguments, return counts, and scope before
-   implementation. Private function stacks with explicit transfers may be easier
-   to reason about than shared mutable stacks, but this needs designer approval.
+6. Implement basic functions after settling return counts, variable scope, and
+   failure boundaries. Use `<count` for consuming private inputs, `?<count` for
+   non-consuming private copies, and no annotation for a shared caller stack.
 7. Decide array construction/grouping, then loops and control flow; add cases
    incrementally rather than treating uncertain examples as finalized syntax.
 8. Verify Linux and Windows builds and interactive behavior, then add continuous

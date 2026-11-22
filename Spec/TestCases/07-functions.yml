@@ -1,0 +1,557 @@
+# Function behavior for designer review; runtime support is not implemented yet.
+# All cases are medium confidence and therefore enforced by the spec runner.
+# Review convention: {:name ...} defines a function in its current lexical scope.
+# Private functions declare >N outputs; shared functions omit that annotation.
+---
+name: defining a function does not execute its body
+confidence: medium
+code: |
+  99
+  {:example<0
+    "not printed during definition" !print
+  }>0
+output:
+stack: [99]
+---
+name: shared function operates on the caller stack
+confidence: medium
+code: |
+  {:sum
+    +
+  }
+  99 10 20 !sum
+output:
+stack: [99, 30]
+---
+name: consuming private function takes the top input values
+confidence: medium
+code: |
+  {:sum<2
+    +
+  }>1
+  99 10 20 !sum
+output:
+stack: [99, 30]
+---
+name: copied private function preserves its original inputs
+confidence: medium
+code: |
+  {:sum?<2
+    +
+  }>1
+  99 10 20 !sum
+output:
+stack: [99, 10, 20, 30]
+---
+name: private input order preserves left and right operands
+confidence: medium
+code: |
+  {:difference<2
+    -
+  }>1
+  99 10 3 !difference
+output:
+stack: [99, 7]
+---
+name: copied input order preserves left and right operands
+confidence: medium
+code: |
+  {:difference?<2
+    -
+  }>1
+  99 10 3 !difference
+output:
+stack: [99, 10, 3, 7]
+---
+name: return count selects the top values in their existing order
+confidence: medium
+commentary: |
+  Proposed return rule: append the top N private values bottom-to-top, discarding
+  the rest of the working stack. Returned values must not be reversed.
+code: |
+  {:pair<0
+    1 2 3
+  }>2
+  99 !pair
+output:
+stack: [99, 2, 3]
+---
+name: consuming function with zero outputs discards its working stack
+confidence: medium
+code: |
+  {:discard<2
+    30
+  }>0
+  99 10 20 !discard
+output:
+stack: [99]
+---
+name: copied function with zero outputs preserves the caller stack
+confidence: medium
+code: |
+  {:inspect?<2
+    +
+    !print
+  }>0
+  99 10 20 !inspect
+output: |
+  30
+stack: [99, 10, 20]
+---
+name: a function can produce more outputs than inputs
+confidence: medium
+code: |
+  {:pair<0
+    10 20
+  }>2
+  !pair
+output:
+stack: [10, 20]
+---
+name: function output remains in execution order
+confidence: medium
+code: |
+  {:greet<0
+    "inside" !print
+  }>0
+  "before" !print
+  !greet
+  "after" !print
+output: |
+  before
+  inside
+  after
+stack: []
+---
+name: private function can return a null value
+confidence: medium
+code: |
+  {:divide<2
+    /
+  }>1
+  99 1 0 !divide
+output:
+stack: [99, null]
+---
+name: bare variables capture their values at definition time
+confidence: medium
+code: |
+  10 ->x
+  {:read<0
+    x
+  }>1
+  20 ->x
+  !read
+output:
+stack: [10]
+---
+name: local writes do not change captured defaults or parent bindings
+confidence: medium
+code: |
+  10 ->x
+  {:increment<0
+    x 1 + ->x
+    x
+  }>1
+  !increment !increment
+  x
+output:
+stack: [11, 11, 10]
+---
+name: anonymous function can be stored without executing its body
+confidence: medium
+commentary: |
+  A function literal pushes a callable value. Storage consumes that value;
+  !action invokes it later. With no input annotation, it shares the caller stack.
+code: |
+  {
+    "called" !print
+  } ->action
+  99 !action
+output: |
+  called
+stack: [99]
+---
+name: anonymous function contrasts copied captures with live parent access
+confidence: medium
+commentary: |
+  Bare x captures 10 when the literal is evaluated. :x retains access to the
+  defining parent binding, so it sees 20 at invocation.
+code: |
+  10 ->x
+  {<0
+    x :x
+  }>2 ->views
+  20 ->x
+  !views
+output:
+stack: [10, 20]
+---
+name: anonymous function local writes leave captured defaults unchanged
+confidence: medium
+code: |
+  10 ->x
+  {<0
+    x 1 + ->x
+    x
+  }>1 ->increment
+  20 ->x
+  !increment !increment
+  x
+output:
+stack: [11, 11, 20]
+---
+name: returned closure keeps its copied defining value
+confidence: medium
+commentary: |
+  The inner literal captures 10, not the later 20. Its copied value remains
+  available after the factory call ends and is unrelated to the root x.
+code: |
+  99 ->x
+  {<0
+    10 ->x
+    {<0
+      x
+    }>1
+    20 ->x
+  }>1 ->makeReader
+  !makeReader ->reader
+  100 ->x
+  !reader !reader
+  x
+output:
+stack: [10, 10, 100]
+---
+name: returned closure retains and mutates its live defining binding
+confidence: medium
+commentary: |
+  :x and ->:x retain the factory's x binding after the factory returns. Each
+  invocation updates that same binding rather than starting a new counter.
+code: |
+  {<0
+    10 ->x
+    {<0
+      :x 1 + ->:x
+      :x
+    }>1
+  }>1 ->makeCounter
+  !makeCounter ->counter
+  !counter !counter
+output:
+stack: [11, 12]
+---
+name: separate factory calls create independent live captures
+confidence: medium
+code: |
+  {<0
+    10 ->x
+    {<0
+      :x 1 + ->:x
+      :x
+    }>1
+  }>1 ->makeCounter
+  !makeCounter ->first
+  !makeCounter ->second
+  !first !first !second !first !second
+output:
+stack: [11, 12, 11, 13, 12]
+---
+name: returned closure distinguishes its retained parent from root and caller
+confidence: medium
+commentary: |
+  :x addresses the factory's retained scope. ::x addresses the lexical root.
+  Neither addresses the local x in the function that happens to invoke inspect.
+code: |
+  100 ->x
+  {<0
+    10 ->x
+    {<0
+      :x ::x
+    }>2
+  }>1 ->makeInspector
+  !makeInspector ->inspect
+  200 ->x
+  {:caller<0
+    999 ->x
+    !inspect
+  }>2
+  !caller
+output:
+stack: [10, 200]
+---
+name: a function value can be passed through a consuming input stack
+confidence: medium
+code: |
+  {<0
+    10
+  }>1 ->ten
+  {:apply<1
+    ->callback
+    !callback
+  }>1
+  ten !apply
+output:
+stack: [10]
+---
+name: storing a callable alias preserves its retained binding identity
+confidence: medium
+commentary: |
+  Proposed function-value copy behavior: both bindings invoke the same callable
+  with the same explicitly retained outer binding, not cloned counter state.
+code: |
+  {<0
+    10 ->x
+    {<0
+      :x 1 + ->:x
+      :x
+    }>1
+  }>1 ->makeCounter
+  !makeCounter ->counter
+  counter ->alias
+  !counter !alias !counter
+output:
+stack: [11, 12, 13]
+---
+name: shared stack does not imply shared variable bindings
+confidence: medium
+code: |
+  10 ->x
+  {:local
+    20 ->x
+    x
+  }
+  !local
+  x
+output:
+stack: [20, 10]
+---
+name: explicit parent read observes the current outer binding
+confidence: medium
+code: |
+  10 ->x
+  {:read<0
+    :x
+  }>1
+  20 ->x
+  !read
+output:
+stack: [20]
+---
+name: explicit parent write modifies the live outer binding
+confidence: medium
+code: |
+  10 ->x
+  {:increment<0
+    :x 1 + ->:x
+  }>0
+  !increment !increment
+  x
+output:
+stack: [12]
+---
+name: bare captured value and explicit parent value are distinct views
+confidence: medium
+code: |
+  10 ->x
+  {:views<0
+    x :x
+  }>2
+  20 ->x
+  !views
+output:
+stack: [10, 20]
+---
+name: nested function captures its immediate defining scope
+confidence: medium
+code: |
+  1 ->x
+  {:outer<0
+    10 ->x
+    {:inner<0
+      x
+    }>1
+    20 ->x
+    !inner
+  }>1
+  !outer
+  x
+output:
+stack: [10, 1]
+---
+name: parent and root access select different lexical environments
+confidence: medium
+code: |
+  1 ->x
+  {:outer<0
+    10 ->x
+    {:inner<0
+      :x ::x
+    }>2
+    !inner
+  }>2
+  !outer
+output:
+stack: [10, 1]
+---
+name: parent and root writes update their selected environments
+confidence: medium
+code: |
+  1 ->x
+  {:outer<0
+    10 ->x
+    {:inner<0
+      :x 1 + ->:x
+      ::x 1 + ->::x
+    }>0
+    !inner
+    x
+  }>1
+  !outer
+  x
+output:
+stack: [11, 2]
+---
+name: parent access follows the defining scope rather than the caller
+confidence: medium
+code: |
+  {:outer<0
+    10 ->x
+    {:reader<0
+      :x
+    }>1
+    {:caller<0
+      20 ->x
+      !reader
+    }>1
+    !caller
+  }>1
+  !outer
+output:
+stack: [10]
+---
+name: nested named definitions do not escape their defining call
+confidence: medium
+commentary: |
+  The first pass has nested named calls, not escaping function values. The colon
+  in a named definition does not register it in the parent or root environment.
+code: |
+  {:outer<0
+    {:inner<0
+      10
+    }>1
+    !inner
+  }>1
+  !outer
+  !inner
+error: unknown-function
+output:
+stack: [10]
+---
+name: insufficient consuming inputs fail before ownership transfer
+confidence: medium
+code: |
+  {:sum<2
+    +
+  }>1
+  10 !sum
+error: stack-underflow
+output:
+stack: [10]
+---
+name: insufficient copied inputs preserve the caller stack
+confidence: medium
+code: |
+  {:sum?<2
+    +
+  }>1
+  10 !sum
+error: stack-underflow
+output:
+stack: [10]
+---
+name: consuming private inputs remain consumed when the body fails
+confidence: medium
+code: |
+  {:fail<2
+    "before failure" !print
+    + +
+  }>1
+  99 10 20 !fail
+  100
+error: stack-underflow
+output: |
+  before failure
+stack: [99]
+---
+name: copied private failure discards working state but preserves inputs
+confidence: medium
+code: |
+  {:fail?<2
+    "before failure" !print
+    + +
+  }>1
+  99 10 20 !fail
+  100
+error: stack-underflow
+output: |
+  before failure
+stack: [99, 10, 20]
+---
+name: shared function failure retains successful stack changes
+confidence: medium
+code: |
+  {:fail
+    "before failure" !print
+    + +
+  }
+  10 20 !fail
+  100
+error: stack-underflow
+output: |
+  before failure
+stack: [30]
+---
+name: insufficient declared outputs fail without a partial return
+confidence: medium
+commentary: |
+  Proposed validation: require N working-stack values before appending any
+  declared results. Consumed inputs still belong to the failed private call.
+code: |
+  {:tooFew<1
+    !print
+    30
+  }>2
+  99 10 !tooFew
+error: stack-underflow
+output: |
+  10
+stack: [99]
+---
+name: explicit parent reads observe private function outer writes before failure
+confidence: medium
+commentary: |
+  The YAML case checks visible output before failure. Verifying that the parent
+  binding remains changed after failure needs direct interpreter-state tests.
+code: |
+  10 ->x
+  {:fail<0
+    20 ->:x
+    :x !print
+    +
+  }>0
+  99 !fail
+error: stack-underflow
+output: |
+  20
+stack: [99]
+---
+name: reading an absent parent binding reports undefined variable
+confidence: medium
+code: |
+  {:read<0
+    :missing
+  }>1
+  99 !read
+error: undefined-variable
+output:
+stack: [99]

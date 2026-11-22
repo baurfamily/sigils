@@ -38,3 +38,52 @@ func invalidProgramsFailWithoutChangingStack(source: String) throws {
     }
     #expect(interpreter.stack == [.number(7)])
 }
+
+@Test(arguments: [
+    ("9 4 - 1", 3.0),
+    ("9 2 * 3", 6.0),
+    ("9 8 / 2", 4.0),
+    ("9 5 / 2", 2.5),
+    ("9 1 / 3", 1.0 / 3.0),
+    ("9 -8 / 2", -4.0),
+    ("9 4 - -1", 5.0),
+])
+func arithmeticPreservesDeeperStack(source: String, result: Double) throws {
+    var interpreter = Interpreter()
+    _ = try interpreter.execute(source)
+    #expect(interpreter.stack == [.number(9), .number(result)])
+}
+
+@Test func concatenationProducesAStackValueWithoutOutput() throws {
+    var interpreter = Interpreter()
+    #expect(try interpreter.execute("\"hello\" + \" \" + \"world\"") == "")
+    #expect(interpreter.stack == [.string("hello world")])
+}
+
+@Test(arguments: ["1 / 0", "0 / 0", "1 / -0", "1 / 0 + 2", "1 / 0 - 2",
+                  "1 / 0 * 2", "1 / 0 / 2"])
+func zeroDivisionAndNumericNullPropagation(source: String) throws {
+    var interpreter = Interpreter()
+    _ = try interpreter.execute(source)
+    #expect(interpreter.stack == [.null])
+}
+
+@Test func nullPrintingConsumesWithoutOutput() throws {
+    var interpreter = Interpreter()
+    #expect(try interpreter.execute("7 1 / 0 !print") == "")
+    #expect(interpreter.stack == [.number(7)])
+}
+
+@Test func nullConcatenationCoercesToEmptyText() throws {
+    var interpreter = Interpreter()
+    _ = try interpreter.execute("1 / 0 + \"hello\" + \" world\"")
+    #expect(interpreter.stack == [.string("hello world")])
+}
+
+@Test(arguments: ["\"text\" - 1", "\"text\" * 2", "\"text\" / 2", "1 / 0 * \"text\"",
+                  "* 2", "/ 2", "4 -", "4 *", "4 /"])
+func invalidArithmeticFailsWithoutChangingStack(source: String) throws {
+    var interpreter = Interpreter()
+    #expect(throws: LanguageError.self) { try interpreter.execute(source) }
+    #expect(interpreter.stack.isEmpty)
+}

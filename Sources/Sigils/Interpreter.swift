@@ -1,6 +1,7 @@
 public enum Value: Equatable, Sendable, CustomStringConvertible {
     case number(Double)
     case string(String)
+    case null
 
     public var description: String {
         switch self {
@@ -9,6 +10,8 @@ public enum Value: Equatable, Sendable, CustomStringConvertible {
             return text.hasSuffix(".0") ? String(text.dropLast(2)) : text
         case .string(let string):
             return string
+        case .null:
+            return "null"
         }
     }
 }
@@ -47,23 +50,19 @@ private struct Parser {
             skipWhitespace()
             guard position < characters.count else { return output }
             switch characters[position] {
-            case "+":
+            case "-" where position + 1 < characters.count && isDigit(characters[position + 1]):
+                stack.append(try scalar())
+            case "+", "-", "*", "/":
+                let operation = characters[position]
                 position += 1
                 guard let left = stack.last else {
-                    throw error("Addition needs a value on the stack")
-                }
-                guard case .number(let lhs) = left else {
-                    throw error("Addition requires numbers")
+                    throw error("Operator \(operation) needs a value on the stack")
                 }
                 skipWhitespace()
                 let right = try scalar()
-                guard case .number(let rhs) = right else {
-                    throw error("Addition requires numbers")
-                }
-                let result = lhs + rhs
-                guard result.isFinite else { throw error("Numeric overflow") }
+                let result = try evaluate(operation, left: left, right: right)
                 stack.removeLast()
-                stack.append(.number(result))
+                stack.append(result)
             case "!":
                 position += 1
                 let start = position
@@ -79,10 +78,41 @@ private struct Parser {
                 guard let value = stack.popLast() else {
                     throw error("!print needs a value on the stack")
                 }
-                output += value.description + "\n"
+                if value != .null { output += value.description + "\n" }
             default:
                 stack.append(try scalar())
             }
+        }
+    }
+
+    func evaluate(_ operation: Character, left: Value, right: Value) throws -> Value {
+        switch (left, right) {
+        case (.string(let lhs), .string(let rhs)) where operation == "+":
+            return .string(lhs + rhs)
+        case (.null, .string(let rhs)) where operation == "+":
+            return .string(rhs)
+        case (.string(let lhs), .null) where operation == "+":
+            return .string(lhs)
+        case (.null, .number), (.number, .null), (.null, .null):
+            return .null
+        case (.number(let lhs), .number(let rhs)):
+            let result: Double
+            switch operation {
+            case "+": result = lhs + rhs
+            case "-": result = lhs - rhs
+            case "*": result = lhs * rhs
+            case "/":
+                guard rhs != 0 else { return .null }
+                result = lhs / rhs
+            default:
+                throw error("Unknown operator \(operation)")
+            }
+            guard result.isFinite else { throw error("Numeric overflow") }
+            return .number(result)
+        default:
+            throw error(operation == "+"
+                        ? "Addition requires two numbers or two strings (null may coerce)"
+                        : "Operator \(operation) requires numbers (null may propagate)")
         }
     }
 

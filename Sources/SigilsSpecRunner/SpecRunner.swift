@@ -122,12 +122,13 @@ public enum SpecRunner {
     }
 
     private static func value(_ node: Node) throws -> Value {
+        if node.tag == Tag(.null) { return .null }
         if node.tag == Tag(.str), let text = node.string { return .string(text) }
         if node.tag == Tag(.int) || node.tag == Tag(.float),
            let number = node.float, number.isFinite {
             return .number(number)
         }
-        throw invalid("Expected stack values must be finite numbers or strings")
+        throw invalid("Expected stack values must be finite numbers, strings, or null")
     }
 
     private static func invalid(_ message: String) -> SpecError {

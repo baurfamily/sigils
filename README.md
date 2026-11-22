@@ -35,20 +35,35 @@ stack changes or buffered output; REPL errors leave the previous stack intact.
 | `5`, `12.2`, `-8`, `0.1` | Push a number onto the stack. |
 | `"hello, world"` | Push a single-line, double-quoted string. |
 | `1 + 4` | Push `1`; `+` consumes the stack's top number and the following numeric literal, pushing their sum. |
+| `4 - 1`, `2 * 3`, `8 / 2` | Subtract, multiply, or divide the stack's top number by the following numeric literal. |
+| `"hello" + " " + "world"` | Concatenate strings, leaving the result on the stack without printing. |
 | `"hello" !print` | Consume the top value and print it with a newline. |
 | Spaces and newlines | Separate instructions; `1+4` also works. |
 
-Addition leaves deeper stack entries untouched. `+ 4` can therefore operate on a
-number left by an earlier REPL line. Type mismatches, missing operands, unsupported
-syntax, and unknown functions are errors with line/column locations.
+Binary operators leave deeper stack entries untouched. `+ 4` can therefore operate
+on a number left by an earlier REPL line. Right operands currently must be literals;
+operations evaluate in sequence, not with conventional infix precedence. `-` directly
+followed by a digit starts a signed literal: `4 -1` pushes two numbers, whereas
+`4 - 1` subtracts. Type mismatches, missing operands, unsupported syntax, and unknown
+functions are errors with line/column locations. Adding a number to a string does
+not implicitly convert the number to text.
 
 Numbers currently use finite IEEE-754 `Double` values. Decimal arithmetic may round,
 and integers beyond 2^53 are not all exactly representable. Whole-number output omits
 the `.0` suffix. Numeric equality in specs is exact, not tolerance-based.
 
+Division is true floating-point division: `5 / 2` produces `2.5`. Dividing by zero
+(including `0 / 0` and negative zero) consumes the operands and pushes null instead
+of infinity or an error. Other numeric overflow remains an error.
+
+**Provisional null behavior:** numeric arithmetic propagates null, and string
+concatenation treats it as empty text. `!print` consumes null without emitting any
+bytes, including a newline. The REPL displays null stack entries as `null`; this is
+a display label, not language keyword syntax. There is no null literal yet.
+
 Strings currently contain literal text only: escapes, interpolation, smart quotes,
 single quotes, and alternative delimiters are not implemented. Variables, comments,
-arrays, user functions, loops, other operators, and stack-access symbols remain
+arrays, user functions, loops, other arithmetic operators, and stack-access symbols remain
 unimplemented pending confirmed cases and design decisions.
 
 ## YAML behavior cases
@@ -74,6 +89,9 @@ Required fields are `name`, `code`, `output`, and `stack`. An optional `commenta
 field is documentation only. Null `output` means no output, and null `stack` means
 an empty stack. Stack sequences are bottom-to-top and distinguish numbers from
 strings; quote numeric-looking expected strings.
+
+A null entry *inside* a stack sequence is a null value: `stack: [null]` expects one
+entry, unlike `stack: []` or a null `stack` field, which expect no entries.
 
 For ordinary scalar output, comparison ignores at most one final newline on each
 side, never other whitespace. YAML block scalars (`|`, `|-`, `|+`, or `>`) compare

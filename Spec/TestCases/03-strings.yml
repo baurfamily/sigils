@@ -9,8 +9,9 @@ stack:
 name: string concatenation
 code: |
   "hello" + " " + "world"
-output: hello world
+output:
 stack:
+  - hello world
 ---
 name: print value
 commentary: The `print` function consumes from the stack.
@@ -19,4 +20,3 @@ code: |
 output: hello
 stack:
 ---
-

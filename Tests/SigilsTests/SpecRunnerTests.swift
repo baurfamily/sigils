@@ -42,6 +42,22 @@ import SigilsSpecRunner
     #expect(report.failed == 1)
 }
 
+@Test func nullStackEntryIsDistinctFromAnEmptyStack() throws {
+    let report = try SpecRunner.evaluate(yaml: """
+    name: null result
+    code: 1 / 0
+    output:
+    stack: [null]
+    ---
+    name: consumed null
+    code: 1 / 0 !print
+    output:
+    stack:
+    """)
+    #expect(report.passed == 2)
+    #expect(report.failed == 0)
+}
+
 @Test(arguments: ["stack: [true]", "stack: []\nfuture: ignored"])
 func invalidSchemaFails(fields: String) throws {
     let report = try SpecRunner.evaluate(yaml: """

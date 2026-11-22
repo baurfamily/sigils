@@ -7,8 +7,9 @@ specs without explicit permission, and stop feature work whenever existing cases
 ## Current foundation
 
 - Swift package with one shared interpreter for REPL, files, STDIN, and YAML cases.
-- Numbers, single-line double-quoted literal strings, consuming `!print`, and
-  stack-plus-following-literal addition.
+- Numbers, single-line double-quoted literal strings, consuming `!print`,
+  stack-plus-following-literal arithmetic (`+`, `-`, `*`, `/`), and string concatenation.
+- True `Double` division; division by zero produces a null stack value.
 - YAML discovery on every run; isolated cases, output/stack assertions, failure
   diagnostics, and a test-suite entry point for the current cases.
 - No broader brainstorming features implemented.
@@ -23,10 +24,10 @@ remain pending.
 1. Re-read all current cases and this plan; run `swift test` and `swift run sigils spec`.
    Resolve failures before changing language behavior.
 2. Confirm numeric semantics: binary floating point versus decimal/arbitrary-precision
-   numbers, overflow, numeric syntax, formatting, and eventual division. `Double`
-   is sufficient for current cases but not exact decimal or large-integer work.
+   numbers, overflow, numeric syntax, and formatting. True division using `Double`
+   is currently confirmed, but not exact decimal or large-integer arithmetic.
 3. Confirm operand evaluation and stack semantics before expanding arithmetic.
-   Current `+` takes its left operand from the stack and a literal on its right.
+   Current operators take their left operand from the stack and a literal on the right.
    Decide whether right operands may be variables, calls, or expressions, and how
    nested prefix operations are delimited. Avoid silently introducing conventional
    infix precedence into a prefix-oriented language.
@@ -44,6 +45,13 @@ remain pending.
 
 ## Design notes to revisit
 
+- Null coercion is provisional: zero division produces null, numeric arithmetic
+  propagates it, string concatenation treats it as empty text, and `!print` consumes
+  it without emitting bytes. This can hide the original invalid calculation or
+  silently remove text. Revisit propagation, observability, and whether absent and
+  invalid values should be distinguishable before building control flow.
+- A minus immediately followed by a digit remains a signed number literal; standalone
+  minus is subtraction. Resolve adjacency deliberately if tokenization changes.
 - Spreading signatures between the opening definition and trailing return annotation
   may make tooling and error messages harder. Consider alternatives in discussion,
   without changing the proposed syntax prematurely.

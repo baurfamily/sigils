@@ -40,3 +40,16 @@ import Testing
     run.stepLine()
     #expect(run.result.stack.map(\.text) == ["1"])
 }
+
+@Test func debuggingStepsOverCallsAndReportsBodyFailures() {
+    var run = DebugRun(source: "{:f<0\n  1 +\n}>0\n99 !f\n100")
+    run.stepInstruction()
+    #expect(run.nextLocation?.line == 4)
+    run.stepInstruction()
+    #expect(run.result.stack.map(\.text) == ["99"])
+    run.stepInstruction()
+    #expect(run.isFinished)
+    #expect(run.failureLocation?.line == 2)
+    #expect(run.failureLocation?.column == 5)
+    #expect(run.result.stack.map(\.text) == ["99"])
+}

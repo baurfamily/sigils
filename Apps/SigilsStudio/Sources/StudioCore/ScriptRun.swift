@@ -34,6 +34,9 @@ public struct ScriptRun: Sendable {
             case .error:
                 kind = "error"
                 text = value.description
+            case .function:
+                kind = "function"
+                text = value.description
             }
             return StackEntry(index: index, kind: kind, text: text)
         }

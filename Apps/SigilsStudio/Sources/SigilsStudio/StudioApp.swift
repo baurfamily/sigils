@@ -101,6 +101,7 @@ struct WorkspaceView: View {
         case "string": .green
         case "null": .purple
         case "error": .red
+        case "function": .orange
         default: .gray
         }
     }

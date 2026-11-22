@@ -217,8 +217,7 @@ final class WorkspaceModel: SwiftCrossUI.ObservableObject {
                         self.debugInvalidated = self.currentSource != completed.source
                         self.result = completed.result
                         self.client.markExecution(line: self.debugInvalidated ? nil
-                            : (completed.nextLocation?.line
-                                ?? (completed.result.diagnostic == nil ? nil : completed.lastInstruction?.start.line)))
+                            : (completed.failureLocation?.line ?? completed.nextLocation?.line))
                         self.updateStatus()
                     }
                 }

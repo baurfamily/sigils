@@ -1,8 +1,11 @@
+import Foundation
+
 public enum Value: Equatable, Sendable, CustomStringConvertible {
     case number(Double)
     case string(String)
     case null
     case error(LanguageError)
+    case function(FunctionValue)
 
     public var description: String {
         switch self {
@@ -15,6 +18,8 @@ public enum Value: Equatable, Sendable, CustomStringConvertible {
             return "null"
         case .error(let error):
             return "err:<\(error.code.rawValue), \(error.line)>"
+        case .function(let function):
+            return function.description
         }
     }
 }
@@ -51,6 +56,7 @@ public struct ExecutionResult: Sendable {
 public struct Interpreter {
     public private(set) var stack: [Value] = []
     public private(set) var variables: [String: Value] = [:]
+    private var context = FunctionContext()
 
     public init() {}
 
@@ -62,10 +68,12 @@ public struct Interpreter {
 
     /// Stops at the first error while retaining successful instructions and output.
     public mutating func evaluate(_ source: String) -> ExecutionResult {
-        var session = ExecutionSession(source: source, stack: stack, variables: variables)
+        var session = ExecutionSession(source: source, stack: stack, context: context)
         while !session.isFinished { _ = session.step() }
         stack = session.stack
         variables = session.variables
+        context = session.parser.context
+        context.collect(stack: stack)
         return ExecutionResult(output: session.output, error: session.error)
     }
 
@@ -88,13 +96,16 @@ public struct SourceSpan: Equatable, Sendable {
 
 /// Executes an immutable source snapshot, pausing between complete instructions.
 public struct ExecutionSession: Sendable {
-    private var parser: Parser
+    fileprivate var parser: Parser
     public private(set) var output = ""
     public private(set) var error: LanguageError?
     public private(set) var lastInstruction: SourceSpan?
 
     public var stack: [Value] { parser.stack }
     public var variables: [String: Value] { parser.variables }
+    public var failureLocation: SourceLocation? {
+        error.map { SourceLocation(line: $0.line, column: $0.column) }
+    }
     public var nextLocation: SourceLocation? {
         guard error == nil, let position = parser.nextPosition else { return nil }
         return parser.locations[position]
@@ -102,11 +113,11 @@ public struct ExecutionSession: Sendable {
     public var isFinished: Bool { nextLocation == nil }
 
     public init(source: String) {
-        self.init(source: source, stack: [], variables: [:])
+        self.init(source: source, stack: [], context: FunctionContext())
     }
 
-    fileprivate init(source: String, stack: [Value], variables: [String: Value]) {
-        parser = Parser(source: source, stack: stack, variables: variables)
+    fileprivate init(source: String, stack: [Value], context: FunctionContext) {
+        parser = Parser(source: source, stack: stack, context: context)
     }
 
     /// Returns only this instruction's output; `output` retains the complete run.
@@ -128,15 +139,20 @@ public struct ExecutionSession: Sendable {
     }
 }
 
-private struct Parser: Sendable {
+fileprivate struct Parser: Sendable {
     let characters: [Character]
     let locations: [SourceLocation]
     var position = 0
     var stack: [Value]
-    var variables: [String: Value]
+    var context: FunctionContext
+    let scopeID: Int
+    var variables: [String: Value] {
+        // Scope IDs are allocated internally and remain live for the active parser.
+        context.scopes[scopeID]!.bindings
+    }
     var instructionStart = 0
 
-    init(source: String, stack: [Value], variables: [String: Value]) {
+    init(source: String, stack: [Value], context: FunctionContext) {
         characters = Array(source)
         var locations: [SourceLocation] = []
         var line = 1
@@ -149,7 +165,16 @@ private struct Parser: Sendable {
         locations.append(SourceLocation(line: line, column: column))
         self.locations = locations
         self.stack = stack
-        self.variables = variables
+        self.context = context
+        scopeID = 0
+    }
+
+    init(body: FunctionBody, stack: [Value], context: FunctionContext, scopeID: Int) {
+        characters = body.characters
+        locations = body.locations
+        self.stack = stack
+        self.context = context
+        self.scopeID = scopeID
     }
 
     var nextPosition: Int? {
@@ -162,6 +187,16 @@ private struct Parser: Sendable {
 
     mutating func instruction(output: inout String) throws(LanguageError) {
         switch characters[position] {
+        case "{":
+            let function = try functionDefinition()
+            if let name = function.name {
+                try bind(.function(function), named: name, in: scopeID)
+            } else {
+                stack.append(.function(function))
+            }
+        case ":":
+            let reference = try scopedName()
+            stack.append(try variable(named: reference.name, in: reference.scope))
         case "?":
             position += 1
             if position < characters.count, characters[position] == "@" {
@@ -191,20 +226,34 @@ private struct Parser: Sendable {
             position += 1
         case "!":
             position += 1
-            let start = position
-            while position < characters.count,
-                  characters[position].isLetter || characters[position].isNumber
-                    || characters[position] == "_" {
-                position += 1
+            if position < characters.count, characters[position] == "{" {
+                let function = try functionDefinition()
+                guard function.name == nil else {
+                    throw error("An immediate call requires an anonymous function")
+                }
+                try invoke(function, output: &output)
+                return
             }
-            let name = String(characters[start..<position])
-            guard name == "print" else {
-                throw error("Unknown function !\(name)", code: .unknownFunction)
+            let reference: (name: String, scope: Int)
+            if position < characters.count, characters[position] == ":" {
+                reference = try scopedName()
+            } else {
+                reference = (identifier(), scopeID)
             }
-            guard let value = stack.popLast() else {
-                throw error("!print needs a value on the stack", code: .stackUnderflow)
+            if reference.name == "print", reference.scope == scopeID {
+                guard let value = stack.popLast() else {
+                    throw error("!print needs a value on the stack", code: .stackUnderflow)
+                }
+                if value != .null { output += value.description + "\n" }
+            } else {
+                guard let value = context.scopes[reference.scope]?.bindings[reference.name] else {
+                    throw error("Unknown function !\(reference.name)", code: .unknownFunction)
+                }
+                guard case .function(let function) = value else {
+                    throw error("!\(reference.name) requires a function value", code: .typeError)
+                }
+                try invoke(function, output: &output)
             }
-            if value != .null { output += value.description + "\n" }
         default:
             if isIdentifierStart(characters[position]) {
                 let name = identifier()
@@ -240,16 +289,17 @@ private struct Parser: Sendable {
             }
             return
         }
-        guard position < characters.count, isIdentifierStart(characters[position]) else {
+        guard position < characters.count,
+              isIdentifierStart(characters[position]) || characters[position] == ":" else {
             let code: ErrorCode = position == characters.count || characters[position].isWhitespace
                 ? .missingAttachedDestination : .invalidDestination
             throw error("Attach a destination name to the arrow: ->x", code: code)
         }
-        let name = identifier()
+        let reference = try scopedName()
         guard let value = stack.last else {
             throw error("Storage needs a value on the stack", code: .stackUnderflow)
         }
-        variables[name] = value
+        try bind(value, named: reference.name, in: reference.scope)
         if consuming { stack.removeLast() }
     }
 
@@ -267,8 +317,9 @@ private struct Parser: Sendable {
             throw error("Attach an index to @")
         }
         let value: Value
-        if isIdentifierStart(characters[position]) {
-            value = try variable(named: identifier())
+        if isIdentifierStart(characters[position]) || characters[position] == ":" {
+            let reference = try scopedName()
+            value = try variable(named: reference.name, in: reference.scope)
         } else {
             value = try scalar()
         }
@@ -287,10 +338,156 @@ private struct Parser: Sendable {
     }
 
     func variable(named name: String) throws(LanguageError) -> Value {
-        guard let value = variables[name] else {
+        try variable(named: name, in: scopeID)
+    }
+
+    func variable(named name: String, in scope: Int) throws(LanguageError) -> Value {
+        guard let value = context.scopes[scope]?.bindings[name] else {
             throw error("Undefined variable \(name)", code: .undefinedVariable)
         }
         return value
+    }
+
+    mutating func bind(_ value: Value, named name: String, in scope: Int) throws(LanguageError) {
+        guard context.scopes[scope] != nil else {
+            throw error("The selected lexical scope is unavailable", code: .undefinedVariable)
+        }
+        context.scopes[scope]?.bindings[name] = value
+    }
+
+    mutating func scopedName() throws(LanguageError) -> (name: String, scope: Int) {
+        var scope = scopeID
+        if position < characters.count, characters[position] == ":" {
+            position += 1
+            if position < characters.count, characters[position] == ":" {
+                position += 1
+                scope = 0
+            } else {
+                guard let parent = context.scopes[scopeID]?.parent else {
+                    throw error("The current scope has no parent", code: .undefinedVariable)
+                }
+                scope = parent
+            }
+        }
+        guard position < characters.count, isIdentifierStart(characters[position]) else {
+            throw error("Attach a variable name to its scope prefix")
+        }
+        return (identifier(), scope)
+    }
+
+    mutating func functionDefinition() throws(LanguageError) -> FunctionValue {
+        position += 1
+        var name: String?
+        if position < characters.count, characters[position] == ":" {
+            position += 1
+            guard position < characters.count, isIdentifierStart(characters[position]) else {
+                throw error("Attach a function name to the definition colon")
+            }
+            name = identifier()
+        }
+        var copiesInputs = false
+        if position < characters.count, characters[position] == "?" {
+            copiesInputs = true
+            position += 1
+            guard position < characters.count, characters[position] == "<" else {
+                throw error("A copied input count requires ?<count")
+            }
+        }
+        var inputs: Int?
+        if position < characters.count, characters[position] == "<" {
+            position += 1
+            inputs = try functionCount()
+        }
+        let bodyStart = position
+        var depth = 1
+        while position < characters.count {
+            let character = characters[position]
+            if character == "\"" {
+                position += 1
+                while position < characters.count, characters[position] != "\"" {
+                    guard !characters[position].isNewline else {
+                        throw error("Quoted strings must be on one line")
+                    }
+                    position += 1
+                }
+                guard position < characters.count else { throw error("Unterminated string in function definition") }
+            } else if character == "{" {
+                depth += 1
+            } else if character == "}" {
+                depth -= 1
+                if depth == 0 { break }
+            }
+            position += 1
+        }
+        guard depth == 0 else { throw error("Unterminated function definition") }
+        let bodyEnd = position
+        position += 1
+        var outputs: Int?
+        if inputs != nil {
+            guard position < characters.count, characters[position] == ">" else {
+                throw error("Private functions require an attached output count: }>count")
+            }
+            position += 1
+            outputs = try functionCount()
+        } else if position < characters.count, characters[position] == ">" {
+            throw error("Shared-stack functions do not declare an output count")
+        }
+        return FunctionValue(
+            identity: UUID(), name: name, inputCount: inputs, copiesInputs: copiesInputs,
+            outputCount: outputs,
+            body: FunctionBody(characters: Array(characters[bodyStart..<bodyEnd]),
+                               locations: Array(locations[bodyStart...bodyEnd])),
+            captured: variables, parentScope: scopeID
+        )
+    }
+
+    mutating func functionCount() throws(LanguageError) -> Int {
+        let start = position
+        while position < characters.count, isDigit(characters[position]) { position += 1 }
+        guard position > start, let count = Int(String(characters[start..<position])),
+              position == characters.count
+                || (characters[position] != "." && !isIdentifierStart(characters[position])) else {
+            throw error("Function counts must be attached nonnegative integers")
+        }
+        return count
+    }
+
+    mutating func invoke(_ function: FunctionValue, output: inout String) throws(LanguageError) {
+        guard !context.activeCalls.contains(function.identity), context.activeCalls.count < 128 else {
+            throw error("Recursive calls and call depths over 128 are not supported", code: .typeError)
+        }
+        guard context.scopes[function.parentScope] != nil else {
+            throw error("The function's defining scope is unavailable", code: .undefinedVariable)
+        }
+        let childStack: [Value]
+        if let count = function.inputCount {
+            guard stack.count >= count else {
+                throw error("Function needs \(count) input values", code: .stackUnderflow)
+            }
+            childStack = Array(stack.suffix(count))
+            if !function.copiesInputs { stack.removeLast(count) }
+        } else {
+            childStack = stack
+        }
+        let childScope = context.makeScope(bindings: function.captured, parent: function.parentScope)
+        context.activeCalls.append(function.identity)
+        var child = Parser(body: function.body, stack: childStack, context: context, scopeID: childScope)
+        defer {
+            context = child.context
+            context.activeCalls.removeLast()
+            if function.inputCount == nil { stack = child.stack }
+        }
+        while let next = child.nextPosition {
+            child.position = next
+            child.instructionStart = next
+            try child.instruction(output: &output)
+        }
+        if let count = function.outputCount {
+            guard child.stack.count >= count else {
+                throw error("Function produced fewer than \(count) declared outputs", code: .stackUnderflow)
+            }
+            stack.append(contentsOf: child.stack.suffix(count))
+        }
     }
 
     func evaluate(_ operation: Character, left: Value, right: Value) throws(LanguageError) -> Value {

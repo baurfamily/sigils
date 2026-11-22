@@ -28,8 +28,9 @@ STDIN start with an empty stack and bindings and emit only explicitly printed ou
 Errors go to STDERR; noninteractive execution stops and exits unsuccessfully.
 
 Each submission stops at its first error. Successful instructions before it retain
-their state and output; the failed instruction leaves its operands and bindings
-unchanged. In the REPL, a structured error value is appended to the stack and the
+their state and output; failed primitive instructions leave their operands and
+bindings unchanged. Function calls have the ownership and side-effect rules
+described below. In the REPL, a structured error value is appended to the stack and the
 next prompt remains available. Its display is `err:<category, line>`; the diagnostic
 also includes a column and message. Scripts do not append the REPL-only error value.
 No try/rescue, automatic continuation, or general struct syntax is implemented yet.
@@ -65,7 +66,7 @@ Neovim is not on `PATH`.
   fresh stack and variable bindings each time. The right sidebar shows stack
   values top-first, indexed from zero, in index/value/type columns. Indices are
   lighter; type labels are blue for numbers, green for strings, purple for null,
-  and red for errors. Output and diagnostics appear below.
+  red for errors, and orange for functions. Output and diagnostics appear below.
   Script errors stop execution without adding a REPL error value.
 - Editing after Run marks the displayed results as belonging to the previous
   source. There is no automatic execution.
@@ -104,7 +105,10 @@ Output accumulates once per executed instruction, and script errors preserve the
 successful prefix without pushing a REPL error value.
 
 Stop discards pending operation results, rather than interrupting an individual
-instruction halfway through. Function-aware Step Into/Over/Out, breakpoints, a case
+instruction halfway through. A function definition or call is one complete
+instruction: stepping a call executes its entire body, including nested calls.
+Run to Cursor cannot pause inside a called function. Function-aware Step Into/Out,
+breakpoints, a case
 browser, and a scratch command console are **not implemented**.
 The quick terminal REPL remains unchanged; history
 navigation and the approved `!stack:clear` operation are still pending.
@@ -141,7 +145,8 @@ does not implicitly convert the number to text.
 Destination names must be attached: `->x` is valid; `-> x` and bare `->` are errors,
 not discard instructions. Names are case-sensitive ASCII identifiers: a letter or
 underscore followed by letters, digits, or underscores. For example, `_result2`
-is valid. There is one binding namespace per interpreter, with rebinding allowed.
+is valid. There is one binding namespace per lexical scope, with rebinding allowed;
+function names share it with other variables.
 Each spec case starts with fresh bindings.
 
 ```text
@@ -153,7 +158,84 @@ This prints `7`. Reads push values rather than live binding references:
 `5 ->x x 8 ->x !print` prints the earlier `5` and leaves `x` bound to `8`.
 Undefined reads are errors, whereas reading a stored null succeeds. Storing with
 an empty stack is currently an underflow error; this remains a medium-confidence
-rule pending loop design. References, forward storage, and nested scopes are deferred.
+rule pending loop design. Live stack references and forward storage are deferred.
+
+### Functions and lexical closures
+
+Definitions create callable values without executing their bodies. The colon in
+`{:name ...}` registers the callable in the **current** scope, not its parent.
+`!name` invokes it; bare `name` pushes its value for storage or passing as an input.
+Anonymous `{ ... }` definitions push their value directly:
+
+```text
+{:sum +}
+2 3 !sum !print
+
+{<2 + }>1 ->add
+99 2 3 !add
+```
+
+The first call prints `5`. The second leaves `99 5` on the stack.
+
+| Definition | Stack behavior |
+| --- | --- |
+| `{:name ...}` or `{ ... }` | Share the caller's stack. No output annotation. |
+| `{:name<N ...}>M` or `{<N ...}>M` | Consume the top N values into a private stack; return its top M values. |
+| `{:name?<N ...}>M` or `{?<N ...}>M` | Copy the top N values into a private stack; return its top M values. |
+
+Counts are attached nonnegative integers, not indices. Private functions require
+an attached output count; zero inputs and zero outputs are supported. Inputs and
+returned values keep their bottom-to-top order. Returned values append to the
+caller stack; remaining private values are discarded. For example,
+`2 3 !{?<2 + }>1` leaves `2 3 5`. `!{ ... }` directly invokes an anonymous function.
+All calls are synchronous.
+
+Variables obtain data from the **defining** scope, while stack inputs obtain data
+from the **calling** scope. A definition snapshots its defining scope's bindings.
+Each invocation starts with fresh local bindings from that snapshot; ordinary
+reads and writes are local, and writes do not change later invocations' defaults.
+
+Use `:x` / `->:x` to read/write the immediate lexical defining parent, and `::x` /
+`->::x` for the lexical root, regardless of the caller. `?->:x` and `?->::x`
+preserve the stored stack value. Scoped calls use `!:name` or `!::name`.
+There is no implicit lookup fallback to an outer scope.
+
+```text
+10 ->x
+{:snapshot<0 x }>1
+{:live<0 :x }>1
+20 ->x
+!snapshot !live
+```
+
+This leaves `10 20`: bare `x` uses the definition-time snapshot, while `:x`
+reads the live defining binding. Escaping functions retain their lexical scope:
+
+```text
+{:makeCounter<1
+  ->count
+  {<0 :count 1 + ->:count :count }>1
+}>1
+10 !makeCounter ->counter
+!counter !counter
+```
+
+This leaves `11 12`. Each factory call has independent live bindings; aliases of
+the same returned callable share those bindings. Closures and function bindings
+remain usable across REPL submissions. Nested named definitions stay local unless
+their callable value is explicitly returned or stored in an outer binding.
+No separate capture list or closure marker is needed.
+
+Insufficient inputs fail before transfer. After transfer, consuming inputs remain
+consumed even if the body fails. A failure preserves output and explicit outer
+writes; shared-stack prefix changes remain, but private working values are
+discarded. Too few declared outputs is an underflow error with no partial return.
+Body diagnostics retain the original definition's line and column.
+
+Calling an absent name is `unknown-function`; calling a non-callable binding is
+`type-error`. Built-in `!print` takes precedence over a local binding of that name.
+Recursion is unsupported, and calls are limited to 128 active frames. Async
+execution, mutable-object copy rules, and function-aware stepping remain deferred.
 
 ### Peeking
 
@@ -229,7 +311,7 @@ a display label, not language keyword syntax. There is no null literal yet.
 
 Strings currently contain literal text only: escapes, interpolation, smart quotes,
 single quotes, and alternative delimiters are not implemented. Comments,
-arrays, user functions, loops, and other arithmetic operators remain
+arrays, loops, and other arithmetic operators remain
 unimplemented pending confirmed cases and design decisions.
 
 ## YAML behavior cases
@@ -298,8 +380,8 @@ unsupported expected values, malformed YAML, unreadable paths, no cases, and fai
 cases cause a nonzero exit. `swift test` also discovers the current repository
 cases, without hardcoding their names or count.
 
-The interpreter uses the Swift standard library; the CLI uses cross-platform
-Foundation and [Yams](https://github.com/jpsim/Yams) for YAML. Terminal detection is
+The interpreter uses Swift and cross-platform Foundation; the CLI adds
+[Yams](https://github.com/jpsim/Yams) for YAML. Terminal detection is
 conditionally compiled for Unix and Windows. Builds, the current cases, and CLI
 modes have been verified on macOS; Linux and Windows verification is still pending.
 

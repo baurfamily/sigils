@@ -22,3 +22,10 @@ import Testing
     #expect(run.stack.map(\.kind) == ["null", "string"])
     #expect(run.stack.map(\.text) == ["null", "\"null\""])
 }
+
+@Test func functionValuesHaveTheirOwnStackDisplayType() {
+    let run = ScriptRun.execute("{<0 10 }>1")
+    #expect(run.stack.map(\.kind) == ["function"])
+    #expect(run.stack.map(\.text) == ["<function>"])
+    #expect(run.diagnostic == nil)
+}

@@ -6,6 +6,7 @@ public struct DebugRun: Sendable {
 
     public var nextLocation: SourceLocation? { session.nextLocation }
     public var lastInstruction: SourceSpan? { session.lastInstruction }
+    public var failureLocation: SourceLocation? { session.failureLocation }
     public var isFinished: Bool { session.isFinished }
     public var result: ScriptRun {
         .snapshot(stack: session.stack, output: session.output, diagnostic: session.error?.description)

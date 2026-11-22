@@ -50,6 +50,10 @@ remain pending.
    functions. `?->name` is implemented; bare `?` is not an operation. For `@`, settle
    index direction, bounds, whether it selects versus pushes a value, and how it
    interacts with consumption/inspection before approving syntax.
+   Review the medium-confidence cases in `06.00-stack-reading.yml` and
+   `06.01-stack-replacement.yml` next. They are enforced and will fail until random
+   access is implemented; resolve these failures before unrelated feature work.
+   `06.02-stack-insertion.yml` contains low-confidence sketches and is skipped.
 6. Resolve function stack ownership, arguments, return counts, and scope before
    implementation. Private function stacks with explicit transfers may be easier
    to reason about than shared mutable stacks, but this needs designer approval.
@@ -60,6 +64,24 @@ remain pending.
 
 ## Design notes to revisit
 
+- Random-access cases propose `@index` as move-to-top and `?@index` as copy-to-top,
+  not swapping and not a special storage selector. Indices refer to the current
+  stack: zero counts from the top, negative one from the bottom; index variables
+  are read without changing their bindings. Other entries retain relative order.
+- Replacement cases propose `->@index` consuming the top source and replacing the
+  selected entry, with the destination resolved before consumption. Self-replacement
+  is a no-op; `?->@index` preserves the source while replacing the destination.
+  These rules are medium confidence and not implemented yet.
+- Low-confidence insertion syntax `->?@index` could preserve the destination entry
+  rather than replace it, while still consuming the source. This is a plausible
+  meaning of "do not consume" applied to the destination, not a settled modifier rule.
+  The insertion file explicitly sketches gap indices: zero above top, positive
+  indices counting downward, negative one below bottom. Resolve against the original
+  stack and adjust for source removal. Gap indexing and modifier placement are open.
+- `invalid-stack-index` and `stack-index-out-of-bounds` are registered for schema
+  validation of these proposals; no runtime index handling exists yet. Indexed writes
+  without a source expect `stack-underflow`. Out-of-bounds/invalid-index failures
+  should leave the source and other entries unchanged.
 - `?` generally signals inspection without consumption and is a modifier, not a
   standalone duplicate operator. Only storage is supported initially; arithmetic,
   printing, and comparison modifiers require separate decisions about which operands

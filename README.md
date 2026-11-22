@@ -22,11 +22,17 @@ The executable is also available at `.build/debug/sigils`. `sigils program.sigil
 and `sigils -` are shortcuts for file and STDIN execution. With no arguments, a
 terminal starts the REPL; redirected input executes as one program.
 
-The REPL retains its stack between lines and displays it bottom-to-top after each
-successful line. EOF (usually Ctrl-D on Unix) exits. Files and STDIN start with an
-empty stack and emit only explicitly printed output. Errors go to STDERR and
-noninteractive execution exits unsuccessfully. A failed execution does not commit
-stack changes or buffered output; REPL errors leave the previous stack intact.
+The REPL retains its stack and variable bindings between lines and displays the
+stack bottom-to-top after each line. EOF (usually Ctrl-D on Unix) exits. Files and
+STDIN start with an empty stack and bindings and emit only explicitly printed output.
+Errors go to STDERR; noninteractive execution stops and exits unsuccessfully.
+
+Each submission stops at its first error. Successful instructions before it retain
+their state and output; the failed instruction leaves its operands and bindings
+unchanged. In the REPL, a structured error value is appended to the stack and the
+next prompt remains available. Its display is `err:<category, line>`; the diagnostic
+also includes a column and message. Scripts do not append the REPL-only error value.
+No try/rescue, automatic continuation, or general struct syntax is implemented yet.
 
 ## Supported language
 
@@ -38,6 +44,8 @@ stack changes or buffered output; REPL errors leave the previous stack intact.
 | `4 1 -`, `2 3 *`, `8 2 /` | Subtract, multiply, or divide the top two stack values. |
 | `"hello" " " + "world" +` | Concatenate strings, leaving the result on the stack without printing. |
 | `"hello" !print` | Consume the top value and print it with a newline. |
+| `5 ->x` | Consume the top value and store it in variable `x`. |
+| `x` | Push the current stored value without consuming or modifying the binding. |
 | Spaces and newlines | Separate instructions; `1 4+` also works. |
 
 All binary operators are postfix and consume only the top two existing stack values:
@@ -51,6 +59,25 @@ There is no infix syntax or precedence system. `1 2 3 * +` produces `7`, while
 whereas `4 1 -` subtracts. Type mismatches, missing operands, unsupported syntax, and
 unknown functions are errors with line/column locations. Adding a number to a string
 does not implicitly convert the number to text.
+
+### Variables
+
+Destination names must be attached: `->x` is valid; `-> x` and bare `->` are errors,
+not discard instructions. Names are case-sensitive ASCII identifiers: a letter or
+underscore followed by letters, digits, or underscores. For example, `_result2`
+is valid. There is one binding namespace per interpreter, with rebinding allowed.
+Each spec case starts with fresh bindings.
+
+```text
+10 3 ->right ->left
+left right - !print
+```
+
+This prints `7`. Reads push values rather than live binding references:
+`5 ->x x 8 ->x !print` prints the earlier `5` and leaves `x` bound to `8`.
+Undefined reads are errors, whereas reading a stored null succeeds. Storing with
+an empty stack is currently an underflow error; this remains a medium-confidence
+rule pending loop design. References, forward storage, and nested scopes are deferred.
 
 Numbers currently use finite IEEE-754 `Double` values. Decimal arithmetic may round,
 and integers beyond 2^53 are not all exactly representable. Whole-number output omits
@@ -66,7 +93,7 @@ bytes, including a newline. The REPL displays null stack entries as `null`; this
 a display label, not language keyword syntax. There is no null literal yet.
 
 Strings currently contain literal text only: escapes, interpolation, smart quotes,
-single quotes, and alternative delimiters are not implemented. Variables, comments,
+single quotes, and alternative delimiters are not implemented. Comments,
 arrays, user functions, loops, other arithmetic operators, and stack-access symbols remain
 unimplemented pending confirmed cases and design decisions.
 
@@ -78,7 +105,8 @@ swift run sigils spec Spec/TestCases/01-scalars-on-the-stack.yml
 swift run sigils spec path/to/cases another/case.yaml
 ```
 
-Each nonempty YAML document is an independent case with an empty starting stack:
+Each nonempty YAML document is an independent case with an empty starting stack
+and variable bindings:
 
 ```yaml
 ---
@@ -89,8 +117,10 @@ output: "5"
 stack: []
 ```
 
-Required fields are `name`, `code`, `output`, and `stack`. An optional `commentary`
-field is documentation only. Null `output` means no output, and null `stack` means
+Successful cases require `name`, `code`, `output`, and `stack`. An optional `commentary`
+field is documentation only. Optional `confidence` is `low`, `medium`, or `high`;
+it records design confidence only, never skipping cases or weakening assertions.
+Existing cases may omit it. Null `output` means no output, and null `stack` means
 an empty stack. Stack sequences are bottom-to-top and distinguish numbers from
 strings; quote numeric-looking expected strings.
 
@@ -101,6 +131,25 @@ For ordinary scalar output, comparison ignores at most one final newline on each
 side, never other whitespace. YAML block scalars (`|`, `|-`, `|+`, or `>`) compare
 exactly after YAML's own folding/chomping, so they can assert precise newlines.
 Expected output must be text or null; quote numeric output such as `"5"`.
+
+An `error` field expects the first failure's category, not an exact diagnostic:
+
+```yaml
+name: detached destination
+code: |
+  8 ->x
+  5 -> x
+error: missing-attached-destination
+stack: [5]
+```
+
+For error cases, `output` and `stack` are optional; if present they assert output
+and data stack state at failure, before the REPL-only error value would be appended.
+An unexpected, absent, or different error fails the case. Error categories currently
+include `undefined-variable`, `missing-attached-destination`, `invalid-destination`,
+`stack-underflow`, `type-error`, `syntax-error`, `numeric-overflow`, and `unknown-function`.
+The structured error's line/column are tested in Swift; YAML location assertions
+and error values inside expected stacks are not supported yet.
 
 The runner discovers `.yml` and `.yaml` files recursively on every invocation,
 deduplicates paths, and reports each case's file, document, name, and mismatches.

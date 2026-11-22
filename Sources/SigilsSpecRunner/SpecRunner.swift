@@ -47,19 +47,26 @@ public enum SpecRunner {
                 let spec = try decode(node)
                 location += " (\(spec.name))"
                 var interpreter = Interpreter()
-                let output = try interpreter.execute(spec.code)
+                let execution = interpreter.evaluate(spec.code)
+                let output = execution.output
                 var differences: [String] = []
-                let actualOutput = spec.exactOutput ? output : removingFinalNewline(output)
-                let expectedOutput = spec.exactOutput
-                    ? spec.output : removingFinalNewline(spec.output)
-                if actualOutput != expectedOutput {
+                if execution.error?.code != spec.error {
                     differences.append(
-                        "output expected \(String(reflecting: spec.output)), got \(String(reflecting: output))"
+                        "error expected \(spec.error?.rawValue ?? "none"), got \(execution.error?.description ?? "none")"
                     )
                 }
-                if interpreter.stack != spec.stack {
+                let actualOutput = spec.exactOutput ? output : removingFinalNewline(output)
+                if let expected = spec.output {
+                    let expectedOutput = spec.exactOutput ? expected : removingFinalNewline(expected)
+                    if actualOutput != expectedOutput {
+                        differences.append(
+                            "output expected \(String(reflecting: expected)), got \(String(reflecting: output))"
+                        )
+                    }
+                }
+                if let expectedStack = spec.stack, interpreter.stack != expectedStack {
                     differences.append(
-                        "stack expected \(describe(spec.stack)), got \(describe(interpreter.stack))"
+                        "stack expected \(describe(expectedStack)), got \(describe(interpreter.stack))"
                     )
                 }
                 if differences.isEmpty {
@@ -82,20 +89,27 @@ public enum SpecRunner {
     private struct Case {
         let name: String
         let code: String
-        let output: String
+        let output: String?
         let exactOutput: Bool
-        let stack: [Value]
+        let stack: [Value]?
+        let error: ErrorCode?
     }
 
     private static func decode(_ node: Node) throws -> Case {
         guard let mapping = node.mapping else { throw invalid("Case must be a mapping") }
-        let allowed: Set<String> = ["name", "code", "output", "stack", "commentary"]
+        let allowed: Set<String> = ["name", "code", "output", "stack", "commentary", "confidence", "error"]
         var seen: Set<String> = []
         for pair in mapping {
             guard pair.key.tag == Tag(.str), let key = pair.key.string, allowed.contains(key) else {
                 throw invalid("Unknown case field \(pair.key)")
             }
             guard seen.insert(key).inserted else { throw invalid("Duplicate field \(key)") }
+        }
+        if let confidence = node["confidence"] {
+            guard confidence.tag == Tag(.str), let text = confidence.string,
+                  ["low", "medium", "high"].contains(text) else {
+                throw invalid("confidence must be low, medium, or high")
+            }
         }
         guard let name = node["name"], name.tag == Tag(.str),
               let nameText = name.string, !nameText.isEmpty else {
@@ -104,20 +118,32 @@ public enum SpecRunner {
         guard let code = node["code"], code.tag == Tag(.str), let source = code.string else {
             throw invalid("code must be a string")
         }
-        guard let output = node["output"] else { throw invalid("Missing output") }
-        let outputText: String
-        if output.tag == Tag(.null) { outputText = "" }
-        else if output.tag == Tag(.str), let text = output.string { outputText = text }
-        else { throw invalid("output must be a string or null") }
-        guard let stackNode = node["stack"] else { throw invalid("Missing stack") }
-        let stack: [Value]
-        if stackNode.tag == Tag(.null) { stack = [] }
-        else if let sequence = stackNode.sequence { stack = try sequence.map(value) }
-        else { throw invalid("stack must be a sequence or null") }
-        let style = output.scalar?.style
+        let expectedError: ErrorCode?
+        if let error = node["error"] {
+            guard error.tag == Tag(.str), let text = error.string,
+                  let code = ErrorCode(rawValue: text) else {
+                throw invalid("error must be a known language error category")
+            }
+            expectedError = code
+        } else { expectedError = nil }
+        let outputText: String?
+        if let output = node["output"] {
+            if output.tag == Tag(.null) { outputText = "" }
+            else if output.tag == Tag(.str), let text = output.string { outputText = text }
+            else { throw invalid("output must be a string or null") }
+        } else if expectedError != nil { outputText = nil }
+        else { throw invalid("Missing output") }
+        let stack: [Value]?
+        if let stackNode = node["stack"] {
+            if stackNode.tag == Tag(.null) { stack = [] }
+            else if let sequence = stackNode.sequence { stack = try sequence.map(value) }
+            else { throw invalid("stack must be a sequence or null") }
+        } else if expectedError != nil { stack = nil }
+        else { throw invalid("Missing stack") }
+        let style = node["output"]?.scalar?.style
         return Case(
             name: nameText, code: source, output: outputText,
-            exactOutput: style == .literal || style == .folded, stack: stack
+            exactOutput: style == .literal || style == .folded, stack: stack, error: expectedError
         )
     }
 

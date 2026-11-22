@@ -23,21 +23,20 @@ import Testing
     #expect(interpreter.stack.isEmpty)
 }
 
-@Test(arguments: ["+ 4", "!print", "\"hello\" 4 +", "1 \"hello\" +",
-                  "1 +", "\"unfinished", "\"two\nlines\"", "1.", "-", "!unknown"])
+@Test(arguments: ["+ 4", "!print", "\"unfinished", "\"two\nlines\"", "1.", "-", "!unknown"])
 func invalidProgramsFailWithoutChangingStack(source: String) throws {
     var interpreter = Interpreter()
     #expect(throws: LanguageError.self) { try interpreter.execute(source) }
     #expect(interpreter.stack.isEmpty)
 }
 
-@Test func failureRestoresExistingStack() throws {
+@Test func failureRetainsSuccessfulInstructionsAndOperands() throws {
     var interpreter = Interpreter()
     _ = try interpreter.execute("7")
     #expect(throws: LanguageError.self) {
         try interpreter.execute("!print 1 \"not a number\" +")
     }
-    #expect(interpreter.stack == [.number(7)])
+    #expect(interpreter.stack == [.number(1), .string("not a number")])
 }
 
 @Test(arguments: [
@@ -87,10 +86,9 @@ func nullConcatenationCoercesToEmptyText(source: String) throws {
 
 @Test(arguments: ["\"text\" 1 -", "\"text\" 2 *", "\"text\" 2 /", "1 0 / \"text\" *",
                   "* 2", "/ 2", "4 -", "4 *", "4 /", "1 + 2", "1 * 2", "1 / 2", "1 - 2"])
-func invalidArithmeticFailsWithoutChangingStack(source: String) throws {
+func invalidArithmeticStopsExecution(source: String) throws {
     var interpreter = Interpreter()
     #expect(throws: LanguageError.self) { try interpreter.execute(source) }
-    #expect(interpreter.stack.isEmpty)
 }
 
 @Test func operatorsNeverConsumeFollowingValues() throws {
@@ -110,4 +108,78 @@ func invalidArithmeticFailsWithoutChangingStack(source: String) throws {
     _ = try interpreter.execute("7")
     #expect(throws: LanguageError.self) { try interpreter.execute("+ 4") }
     #expect(interpreter.stack == [.number(7)])
+}
+
+@Test func sequentialStorageAndValueReads() throws {
+    var interpreter = Interpreter()
+    _ = try interpreter.execute("10 3 ->right ->left left right -")
+    #expect(interpreter.stack == [.number(7)])
+    #expect(interpreter.variables == ["left": .number(10), "right": .number(3)])
+}
+
+@Test func bindingsPersistAndReadsAreSnapshots() throws {
+    var interpreter = Interpreter()
+    _ = try interpreter.execute("5 ->x")
+    _ = try interpreter.execute("x 8 ->x x")
+    #expect(interpreter.stack == [.number(5), .number(8)])
+    #expect(interpreter.variables["x"] == .number(8))
+}
+
+@Test func nullBindingIsNotUndefined() throws {
+    var interpreter = Interpreter()
+    _ = try interpreter.execute("1 0 / ->x x")
+    #expect(interpreter.variables["x"] == .null)
+    #expect(interpreter.stack == [.null])
+}
+
+@Test func attachedStorageAndIdentifierRules() throws {
+    var interpreter = Interpreter()
+    _ = try interpreter.execute("1->_value2 2->Value _value2 Value")
+    #expect(interpreter.stack == [.number(1), .number(2)])
+    #expect(interpreter.evaluate("value").error?.code == .undefinedVariable)
+    #expect(interpreter.evaluate("3 ->2x").error?.code == .invalidDestination)
+    #expect(interpreter.variables["Value"] == .number(2))
+}
+
+@Test func detachedStoragePreservesPrefixAndStopsBeforeReadingName() {
+    var interpreter = Interpreter()
+    let result = interpreter.evaluate("8 ->x\n5 -> x\nx")
+    #expect(result.error?.code == .missingAttachedDestination)
+    #expect(result.error?.line == 2)
+    #expect(result.error?.column == 3)
+    #expect(interpreter.variables["x"] == .number(8))
+    #expect(interpreter.stack == [.number(5)])
+}
+
+@Test func storageUnderflowDoesNotReplaceABinding() throws {
+    var interpreter = Interpreter()
+    _ = try interpreter.execute("7 ->x")
+    #expect(interpreter.evaluate("->x").error?.code == .stackUnderflow)
+    #expect(interpreter.variables["x"] == .number(7))
+}
+
+@Test func failurePreservesOutputAndDoesNotRunFollowingInstructions() {
+    var interpreter = Interpreter()
+    let result = interpreter.evaluate("\"before\" !print 5 ->x missing 99 ->x")
+    #expect(result.output == "before\n")
+    #expect(result.error?.code == .undefinedVariable)
+    #expect(interpreter.variables["x"] == .number(5))
+    #expect(interpreter.stack.isEmpty)
+}
+
+@Test func interactiveErrorsAreStructuredStackValues() throws {
+    var interpreter = Interpreter()
+    let result = interpreter.executeInteractive("5 -> x")
+    let error = try #require(result.error)
+    #expect(interpreter.stack == [.number(5), .error(error)])
+    #expect(interpreter.stack.last?.description == "err:<missing-attached-destination, 1>")
+    _ = try interpreter.execute("8 ->x x")
+    #expect(interpreter.stack == [.number(5), .error(error), .number(8)])
+}
+
+@Test func failedArithmeticKeepsBothOperands() {
+    var interpreter = Interpreter()
+    let result = interpreter.evaluate("99 \"hello\" 4 + 8")
+    #expect(result.error?.code == .typeError)
+    #expect(interpreter.stack == [.number(99), .string("hello"), .number(4)])
 }

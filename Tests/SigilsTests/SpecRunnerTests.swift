@@ -86,3 +86,91 @@ func invalidYAMLCannotSilentlyPass(yaml: String) {
     #expect(report.failed == 0, "\(report.results)")
     #expect(report.passed > 0)
 }
+
+@Test(arguments: ["low", "medium", "high"])
+func confidenceMetadataDoesNotSkipCases(confidence: String) throws {
+    let report = try SpecRunner.evaluate(yaml: """
+    name: matching case
+    confidence: \(confidence)
+    code: 1 2 +
+    output:
+    stack: [3]
+    ---
+    name: mismatching case
+    confidence: \(confidence)
+    code: 1 2 +
+    output:
+    stack: [4]
+    """)
+    #expect(report.passed == 1)
+    #expect(report.failed == 1)
+    #expect(report.results[1].contains("stack expected"))
+}
+
+@Test(arguments: ["unknown", "High", "null", "1", "[high]"])
+func invalidConfidenceMetadataFails(confidence: String) throws {
+    let report = try SpecRunner.evaluate(yaml: """
+    name: invalid confidence
+    confidence: \(confidence)
+    code: ""
+    output:
+    stack: []
+    """)
+    #expect(report.failed == 1)
+    #expect(report.results[0].contains("confidence must be low, medium, or high"))
+}
+
+@Test func errorAssertionsCheckCategoryAndOptionalPrefixState() throws {
+    let report = try SpecRunner.evaluate(yaml: """
+    name: expected failure with state
+    code: |
+      8 ->x
+      5 -> x
+    error: missing-attached-destination
+    output:
+    stack: [5]
+    ---
+    name: expected failure
+    code: missing
+    error: undefined-variable
+    ---
+    name: wrong error
+    code: missing
+    error: stack-underflow
+    ---
+    name: absent error
+    code: 5
+    error: stack-underflow
+    ---
+    name: unexpected error
+    code: missing
+    output:
+    stack: []
+    """)
+    #expect(report.passed == 2)
+    #expect(report.failed == 3)
+}
+
+@Test(arguments: ["null", "1", "unknown", "[undefined-variable]"])
+func invalidErrorCategoriesFail(error: String) throws {
+    let report = try SpecRunner.evaluate(yaml: """
+    name: invalid error
+    code: missing
+    error: \(error)
+    """)
+    #expect(report.failed == 1)
+    #expect(report.results[0].contains("error must be a known language error category"))
+}
+
+@Test func errorAssertionsStillCheckOutputAndStack() throws {
+    let report = try SpecRunner.evaluate(yaml: """
+    name: wrong state
+    code: '"before" !print 5 -> x'
+    error: missing-attached-destination
+    output: wrong
+    stack: [9]
+    """)
+    #expect(report.failed == 1)
+    #expect(report.results[0].contains("output expected"))
+    #expect(report.results[0].contains("stack expected"))
+}

@@ -23,8 +23,9 @@ func writeOutput(_ message: String) {
 
 func runSource(_ source: String) throws {
     var interpreter = Interpreter()
-    let output = try interpreter.execute(source)
-    writeOutput(output)
+    let result = interpreter.evaluate(source)
+    writeOutput(result.output)
+    if let error = result.error { throw error }
 }
 
 func readStandardInput() throws -> String {
@@ -44,16 +45,14 @@ func runREPL() {
             writeOutput("\n")
             return
         }
-        do {
-            writeOutput(try interpreter.execute(line))
-            let values = interpreter.stack.map { value in
-                if case .string(let text) = value { return String(reflecting: text) }
-                return value.description
-            }
-            writeOutput("stack: [\(values.joined(separator: ", "))]\n")
-        } catch {
-            writeError(String(describing: error))
+        let result = interpreter.executeInteractive(line)
+        writeOutput(result.output)
+        let values = interpreter.stack.map { value in
+            if case .string(let text) = value { return String(reflecting: text) }
+            return value.description
         }
+        writeOutput("stack: [\(values.joined(separator: ", "))]\n")
+        if let error = result.error { writeError(error.description) }
     }
 }
 

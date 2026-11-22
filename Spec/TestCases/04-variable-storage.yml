@@ -1,0 +1,125 @@
+# Confidence is review metadata only; all cases are enforced regardless of confidence.
+# Successful cases use the existing runner schema.
+# The `error` field below proposes semantic error categories, not exact messages.
+# Error assertions are not supported by the runner yet.
+# Identifier rules, references, discard syntax, and forward storage remain deferred.
+---
+name: storage consumes the top value
+confidence: high
+commentary: The destination name is attached to the arrow; storing produces no stack value.
+code: |
+  5 ->x
+output:
+stack: []
+---
+name: storage preserves deeper stack values
+confidence: high
+code: |
+  99 5 ->x
+output:
+stack:
+  - 99
+---
+name: variable reads push values without consuming the binding
+confidence: high
+commentary: Repeated reads of x produce two independent stack entries.
+code: |
+  5 ->x
+  x x +
+  x
+output:
+stack:
+  - 10
+  - 5
+---
+name: store the result of postfix arithmetic
+confidence: high
+code: |
+  1 2 3 * + ->total
+  total !print
+output: "7"
+stack: []
+---
+name: variable reads preserve operand order
+confidence: high
+code: |
+  10 ->left
+  3 ->right
+  left right -
+output:
+stack:
+  - 7
+---
+name: sequential storage
+confidence: high
+commentary: remember, it's not reading the "code" when storing, it's consuming from the stack
+code: |
+  10 3 ->right ->left
+  left right -
+output:
+stack:
+  - 7
+---
+name: rebinding does not change a previously pushed value
+confidence: high
+commentary: A bare name pushes its current value, not a live reference to its binding.
+code: |
+  5 ->x
+  x
+  8 ->x
+  !print
+  x
+output: "5"
+stack:
+  - 8
+---
+name: store and concatenate strings
+confidence: high
+code: |
+  "hello" ->greeting
+  greeting " " + "world" + ->message
+  message
+output:
+stack:
+  - hello world
+---
+name: a stored null is distinct from an undefined variable
+confidence: high
+commentary: Reading a binding containing null succeeds; provisional null printing emits nothing.
+code: |
+  5 0 / ->result
+  result !print
+  result
+output:
+stack:
+  - null
+---
+name: undefined variable read is an error
+confidence: high
+code: |
+  missing
+error: undefined-variable
+---
+name: detached storage destination is an error
+confidence: high
+commentary: A space must not silently turn assignment into discarding followed by a variable read.
+code: |
+  8 ->x
+  5 -> x
+error: missing-attached-destination
+stack:
+  - 5
+---
+name: bare storage arrow is an error
+confidence: high
+commentary: A bare arrow is not a discard instruction.
+code: |
+  5 ->
+error: missing-attached-destination
+---
+name: storage requires a stack value
+confidence: medium
+code: |
+  ->x
+error: stack-underflow
+---

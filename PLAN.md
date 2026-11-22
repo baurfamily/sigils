@@ -12,6 +12,12 @@ specs without explicit permission, and stop feature work whenever existing cases
 - Binary operators consume the top as the right operand and the next as the left;
   they never read ahead. Infix behavior has been removed with designer approval.
 - True `Double` division; division by zero produces a null stack value.
+- Attached postfix storage (`->x`), value reads, and rebinding in one interpreter
+  namespace. Case-sensitive ASCII names start with a letter/underscore and continue
+  with letters, digits, or underscores; REPL bindings persist across submissions.
+- First-error stopping with successful prefix state/output retained. Failed
+  instructions retain operands; REPL errors are structured stack values, while
+  scripts stop with a diagnostic and nonzero exit.
 - YAML discovery on every run; isolated cases, output/stack assertions, failure
   diagnostics, and a test-suite entry point for the current cases.
 - No broader brainstorming features implemented.
@@ -25,16 +31,12 @@ remain pending.
 
 1. Re-read all current cases and this plan; run `swift test` and `swift run sigils spec`.
    Resolve failures before changing language behavior.
-2. Review `Spec/TestCases/04-variable-storage.yml` while implementing basic postfix
-   variable storage. `5 ->x` consumes the top value and stores it in `x`; bare `x`
-   pushes the current value, not a reference. Undefined reads, bare `->`, and detached
-   `-> x` are errors. The destination must be attached to the arrow.
-   The file proposes successful cases and semantic error categories; approve the
-   error-assertion schema and settle identifier rules and scope before implementation.
-   Cases now live in TestCases with optional low/medium/high confidence metadata.
-   Confidence never skips or relaxes a case. Storage underflow is medium confidence;
-   all other variable cases are high. Variables and error assertions are not yet
-   implemented, so these cases currently fail; resolve them before unrelated features.
+2. Review the now-implemented basic variable rules in `Spec/TestCases/04-variable-storage.yml`
+   as new cases arise. `5 ->x` consumes the top value; bare `x` pushes its current
+   value rather than a reference. Undefined reads, bare `->`, and detached `-> x`
+   are errors. All variable cases and category assertions now pass.
+   Optional low/medium/high confidence metadata never skips or relaxes a case.
+   Storage underflow remains medium confidence; keep it under review during loop design.
 3. Revisit numeric semantics: binary floating point versus decimal/arbitrary-precision
    numbers, overflow, numeric syntax, and formatting. True division using `Double`
    is currently confirmed, but not exact decimal or large-integer arithmetic.
@@ -52,7 +54,7 @@ remain pending.
 
 ## Design notes to revisit
 
-- Interim error policy agreed, pending implementation: errors become structured stack
+- Interim error policy implemented: errors become structured stack
   values in the REPL; scripts stop on an error until try/rescue semantics exist.
   Preserve the current arithmetic/null policy rather than introducing new arithmetic
   error values in this step. This does not decide how every arithmetic failure behaves.
@@ -61,11 +63,12 @@ remain pending.
   A future rescue operator may inspect an error on the stack; its syntax, whether it
   checks only the top or deeper entries, and continuation boundaries are deferred,
   potentially until functions/methods exist.
-- Before implementing stack errors, settle their representation and source-location
-  assertions, failed-instruction operand effects, which prior state/output survives,
-  and where a failed REPL submission stops. The implementation currently throws and
-  rolls back the entire submission; it does not yet implement the interim stack-error
-  policy. Keep the variable draft's error assertions provisional until this is settled.
+- Errors currently have category, line, column, and message fields. Each submission
+  stops at its first error, preserving successful prefix state/output and leaving
+  failed-instruction operands/bindings unchanged. REPL submissions append the error
+  and return to the prompt. YAML `error` asserts its category; optional output/stack
+  assert the prefix state without a REPL error entry. YAML source-location assertions,
+  general struct access, and later propagation/rescue of stored errors remain deferred.
 - Stack-consuming loops are deferred. Candidate forms `(->x x !print)` and
   `(!print)` mean "continue until it can't"; no syntax or stopping rule is final.
   Revisit whether loops preflight their required values or recognize underflow as
@@ -99,7 +102,7 @@ remain pending.
   added. Establish a tokenization policy using approved examples.
 - Multiline REPL input will become necessary for functions/loops. The current REPL
   intentionally evaluates one complete line at a time.
-- Decide whether runtime failures should eventually retain partial stack mutations
-  or streamed output. Currently each execution commits only on success.
-- Define an error-expectation schema with the designer before adding error cases to
-  the YAML files; current error behavior is covered by Swift implementation tests.
+- Revisit instruction-level state/output effects when rescue exists. Current failures
+  retain successful prefix instructions and output, not partial failed instructions.
+- Extend the implemented YAML error-category assertions with designer-approved
+  source locations or structured stack-error assertions when needed.

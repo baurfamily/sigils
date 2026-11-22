@@ -66,12 +66,25 @@ struct WorkspaceView: View {
             if let result = workspace.result {
                 if result.stack.isEmpty { Text("(empty)").foregroundColor(.gray) }
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 0) {
                         ForEach(result.stack, id: \.index) { entry in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("@\(entry.index) · \(entry.kind)").font(.caption)
-                                Text(entry.text).font(.system(size: 14, design: .monospaced))
+                            HStack(alignment: .top, spacing: 6) {
+                                Text("@\(entry.index)")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                                    .frame(width: 40, alignment: .leading)
+                                Divider()
+                                Text(entry.text)
+                                    .font(.system(size: 14, design: .monospaced))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Divider()
+                                Text(entry.kind)
+                                    .font(.caption)
+                                    .foregroundColor(typeColor(entry.kind))
+                                    .frame(width: 48, alignment: .leading)
                             }
+                            .padding(4)
+                            Divider()
                         }
                     }
                 }
@@ -79,6 +92,16 @@ struct WorkspaceView: View {
                 Text("Run the buffer to inspect its stack.").foregroundColor(.gray)
             }
             Spacer()
+        }
+    }
+
+    private func typeColor(_ kind: String) -> Color {
+        switch kind {
+        case "number": .blue
+        case "string": .green
+        case "null": .purple
+        case "error": .red
+        default: .gray
         }
     }
 

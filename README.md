@@ -63,7 +63,9 @@ Neovim is not on `PATH`.
   path and press Save, or use `:w path`. Unsaved changes block ordinary Open.
 - **Run** executes the current unsaved buffer using the shared interpreter, with
   fresh stack and variable bindings each time. The right sidebar shows stack
-  values top-first, indexed from zero; output and diagnostics appear below.
+  values top-first, indexed from zero, in index/value/type columns. Indices are
+  lighter; type labels are blue for numbers, green for strings, purple for null,
+  and red for errors. Output and diagnostics appear below.
   Script errors stop execution without adding a REPL error value.
 - Editing after Run marks the displayed results as belonging to the previous
   source. There is no automatic execution.

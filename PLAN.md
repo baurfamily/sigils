@@ -25,10 +25,16 @@ remain pending.
 
 1. Re-read all current cases and this plan; run `swift test` and `swift run sigils spec`.
    Resolve failures before changing language behavior.
-2. Tackle basic postfix variable storage next. `5 -> x` is confirmed to consume the
-   top value and store it in `x`; `1 2 + -> x` should store the computed result.
-   Add designer-approved cases and settle identifier rules, reading variables,
-   overwriting, missing names, and scope before implementing those details.
+2. Review `Spec/TestCases/04-variable-storage.yml` while implementing basic postfix
+   variable storage. `5 ->x` consumes the top value and stores it in `x`; bare `x`
+   pushes the current value, not a reference. Undefined reads, bare `->`, and detached
+   `-> x` are errors. The destination must be attached to the arrow.
+   The file proposes successful cases and semantic error categories; approve the
+   error-assertion schema and settle identifier rules and scope before implementation.
+   Cases now live in TestCases with optional low/medium/high confidence metadata.
+   Confidence never skips or relaxes a case. Storage underflow is medium confidence;
+   all other variable cases are high. Variables and error assertions are not yet
+   implemented, so these cases currently fail; resolve them before unrelated features.
 3. Revisit numeric semantics: binary floating point versus decimal/arbitrary-precision
    numbers, overflow, numeric syntax, and formatting. True division using `Double`
    is currently confirmed, but not exact decimal or large-integer arithmetic.
@@ -46,6 +52,33 @@ remain pending.
 
 ## Design notes to revisit
 
+- Interim error policy agreed, pending implementation: errors become structured stack
+  values in the REPL; scripts stop on an error until try/rescue semantics exist.
+  Preserve the current arithmetic/null policy rather than introducing new arithmetic
+  error values in this step. This does not decide how every arithmetic failure behaves.
+  Distinguish parser failures (where the next instruction may be unclear) from
+  operation failures (such as future file/network reads) that callers could recover.
+  A future rescue operator may inspect an error on the stack; its syntax, whether it
+  checks only the top or deeper entries, and continuation boundaries are deferred,
+  potentially until functions/methods exist.
+- Before implementing stack errors, settle their representation and source-location
+  assertions, failed-instruction operand effects, which prior state/output survives,
+  and where a failed REPL submission stops. The implementation currently throws and
+  rolls back the entire submission; it does not yet implement the interim stack-error
+  policy. Keep the variable draft's error assertions provisional until this is settled.
+- Stack-consuming loops are deferred. Candidate forms `(->x x !print)` and
+  `(!print)` mean "continue until it can't"; no syntax or stopping rule is final.
+  Revisit whether loops preflight their required values or recognize underflow as
+  normal termination, without prematurely deciding whether empty `->x` is an error.
+  Array-consuming loops should be considered alongside stack-consuming loops.
+- Null can deliberately delimit stack data, like a C-string terminator; this is a
+  legitimate use, not necessarily a bug. Alternatives include exhaustion-based loops
+  that consume null as data plus a distinct explicit stop marker. Decide whether a
+  sentinel is consumed or retained, how it differs from accidental null, and how
+  nested loops or partial iterations behave before choosing either model.
+  Conditional loops could later skip null, stop on arbitrary values, or use a
+  predicate such as the tentative `(?< 100 ->x x !print)` form. Predicate syntax,
+  peeking/consumption, and termination remain design discussion, not confirmed cases.
 - Forward-looking operand sigils and `x<-` storage are deferred, not implemented.
   Decide later whether "next produced value" means an individual push or the result
   of a bounded computation, and how that boundary and zero/multiple results work.

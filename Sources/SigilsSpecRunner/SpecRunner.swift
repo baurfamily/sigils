@@ -5,7 +5,8 @@ import Yams
 public struct SpecReport {
     public var passed = 0
     public var failed = 0
-    public var skipped = 0
+    public var lowPassed = 0
+    public var lowFailed = 0
     public var results: [String] = []
 }
 
@@ -24,7 +25,8 @@ public enum SpecRunner {
                 let fileReport = try evaluate(yaml: yaml, label: file)
                 report.passed += fileReport.passed
                 report.failed += fileReport.failed
-                report.skipped += fileReport.skipped
+                report.lowPassed += fileReport.lowPassed
+                report.lowFailed += fileReport.lowFailed
                 report.results += fileReport.results
             } catch {
                 report.failed += 1
@@ -48,11 +50,8 @@ public enum SpecRunner {
             do {
                 let spec = try decode(node)
                 location += " (\(spec.name))"
-                if spec.confidence == .low {
-                    report.skipped += 1
-                    report.results.append("SKIP \(location): low confidence")
-                    continue
-                }
+                let lowConfidence = spec.confidence == .low
+                if lowConfidence { location += " [low confidence; non-blocking]" }
                 var interpreter = Interpreter()
                 let execution = interpreter.evaluate(spec.code)
                 let output = execution.output
@@ -77,10 +76,12 @@ public enum SpecRunner {
                     )
                 }
                 if differences.isEmpty {
-                    report.passed += 1
+                    if lowConfidence { report.lowPassed += 1 }
+                    else { report.passed += 1 }
                     report.results.append("PASS \(location)")
                 } else {
-                    report.failed += 1
+                    if lowConfidence { report.lowFailed += 1 }
+                    else { report.failed += 1 }
                     report.results.append("FAIL \(location): \(differences.joined(separator: "; "))")
                 }
             } catch {

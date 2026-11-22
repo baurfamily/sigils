@@ -28,6 +28,8 @@ public enum ErrorCode: String, Sendable {
     case undefinedVariable = "undefined-variable"
     case missingAttachedDestination = "missing-attached-destination"
     case invalidDestination = "invalid-destination"
+    case invalidStackIndex = "invalid-stack-index"
+    case stackIndexOutOfBounds = "stack-index-out-of-bounds"
 }
 
 public struct LanguageError: Error, Equatable, Sendable, CustomStringConvertible {
@@ -107,11 +109,16 @@ private struct Parser {
         switch characters[position] {
         case "?":
             position += 1
-            guard position + 1 < characters.count,
-                  characters[position] == "-", characters[position + 1] == ">" else {
-                throw error("Peek must modify attached storage: ?->x")
+            if position < characters.count, characters[position] == "@" {
+                try accessStack(consuming: false)
+            } else if position + 1 < characters.count,
+                      characters[position] == "-", characters[position + 1] == ">" {
+                try store(consuming: false)
+            } else {
+                throw error("Peek must modify attached storage or stack access: ?->x or ?@0")
             }
-            try store(consuming: false)
+        case "@":
+            try accessStack(consuming: true)
         case "-" where position + 1 < characters.count && characters[position + 1] == ">":
             try store(consuming: true)
         case "-" where position + 1 < characters.count && isDigit(characters[position + 1]):
@@ -146,10 +153,7 @@ private struct Parser {
         default:
             if isIdentifierStart(characters[position]) {
                 let name = identifier()
-                guard let value = variables[name] else {
-                    throw error("Undefined variable \(name)", code: .undefinedVariable)
-                }
-                stack.append(value)
+                stack.append(try variable(named: name))
             } else {
                 stack.append(try scalar())
             }
@@ -158,6 +162,29 @@ private struct Parser {
 
     mutating func store(consuming: Bool) throws(LanguageError) {
         position += 2
+        let inserting = position < characters.count && characters[position] == "?"
+        if inserting {
+            position += 1
+            guard consuming, position < characters.count, characters[position] == "@" else {
+                throw error("Insertion currently requires consuming storage: ->?@index")
+            }
+        }
+        if position < characters.count, characters[position] == "@" {
+            let index = try stackIndex()
+            guard let source = stack.last else {
+                throw error("Storage needs a value on the stack", code: .stackUnderflow)
+            }
+            let destination = try stackPosition(index, count: stack.count + (inserting ? 1 : 0))
+            if inserting {
+                stack.removeLast()
+                // Removing the source shifts only the gap above the original top.
+                stack.insert(source, at: min(destination, stack.count))
+            } else {
+                stack[destination] = source
+                if consuming, destination != stack.count - 1 { stack.removeLast() }
+            }
+            return
+        }
         guard position < characters.count, isIdentifierStart(characters[position]) else {
             let code: ErrorCode = position == characters.count || characters[position].isWhitespace
                 ? .missingAttachedDestination : .invalidDestination
@@ -169,6 +196,46 @@ private struct Parser {
         }
         variables[name] = value
         if consuming { stack.removeLast() }
+    }
+
+    mutating func accessStack(consuming: Bool) throws(LanguageError) {
+        let index = try stackIndex()
+        let position = try stackPosition(index, count: stack.count)
+        let value = stack[position]
+        if consuming { stack.remove(at: position) }
+        stack.append(value)
+    }
+
+    mutating func stackIndex() throws(LanguageError) -> Double {
+        position += 1
+        guard position < characters.count, !characters[position].isWhitespace else {
+            throw error("Attach an index to @")
+        }
+        let value: Value
+        if isIdentifierStart(characters[position]) {
+            value = try variable(named: identifier())
+        } else {
+            value = try scalar()
+        }
+        guard case .number(let number) = value, number.isFinite,
+              number.rounded(.towardZero) == number else {
+            throw error("Stack indices must be finite whole numbers", code: .invalidStackIndex)
+        }
+        return number
+    }
+
+    func stackPosition(_ index: Double, count: Int) throws(LanguageError) -> Int {
+        guard let index = Int(exactly: index), index >= -count, index < count else {
+            throw error("Stack index is out of bounds", code: .stackIndexOutOfBounds)
+        }
+        return index >= 0 ? count - 1 - index : -index - 1
+    }
+
+    func variable(named name: String) throws(LanguageError) -> Value {
+        guard let value = variables[name] else {
+            throw error("Undefined variable \(name)", code: .undefinedVariable)
+        }
+        return value
     }
 
     func evaluate(_ operation: Character, left: Value, right: Value) throws(LanguageError) -> Value {

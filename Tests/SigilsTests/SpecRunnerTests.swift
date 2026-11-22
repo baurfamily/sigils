@@ -105,12 +105,14 @@ func confidenceControlsExecution(confidence: String) throws {
     if confidence == "low" {
         #expect(report.passed == 0)
         #expect(report.failed == 0)
-        #expect(report.skipped == 2)
-        #expect(report.results.allSatisfy { $0.hasPrefix("SKIP ") })
+        #expect(report.lowPassed == 1)
+        #expect(report.lowFailed == 1)
+        #expect(report.results.allSatisfy { $0.contains("[low confidence; non-blocking]") })
     } else {
         #expect(report.passed == 1)
         #expect(report.failed == 1)
-        #expect(report.skipped == 0)
+        #expect(report.lowPassed == 0)
+        #expect(report.lowFailed == 0)
         #expect(report.results[1].contains("stack expected"))
     }
 }
@@ -183,7 +185,7 @@ func invalidErrorCategoriesFail(error: String) throws {
     #expect(report.results[0].contains("stack expected"))
 }
 
-@Test func lowConfidenceCaseDoesNotExecuteUnsupportedSyntax() throws {
+@Test func lowConfidenceFailureIsReportedWithoutFailingTheSuite() throws {
     let report = try SpecRunner.evaluate(yaml: """
     name: future syntax
     confidence: low
@@ -193,7 +195,9 @@ func invalidErrorCategoriesFail(error: String) throws {
     """)
     #expect(report.passed == 0)
     #expect(report.failed == 0)
-    #expect(report.skipped == 1)
+    #expect(report.lowFailed == 1)
+    #expect(report.lowPassed == 0)
+    #expect(report.results[0].contains("undefined-variable"))
 }
 
 @Test func lowConfidenceStillRequiresValidCaseSchema() throws {
@@ -206,10 +210,10 @@ func invalidErrorCategoriesFail(error: String) throws {
     unexpected: typo
     """)
     #expect(report.failed == 1)
-    #expect(report.skipped == 0)
+    #expect(report.lowFailed == 0)
 }
 
-@Test func skippedCountsAggregateAcrossFiles() throws {
+@Test func lowConfidenceResultsAggregateAcrossFiles() throws {
     let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent("sigils-confidence-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
@@ -223,6 +227,12 @@ func invalidErrorCategoriesFail(error: String) throws {
     code: unknown
     output:
     stack: []
+    ---
+    name: successful provisional case
+    confidence: low
+    code: 1 2 +
+    output:
+    stack: [3]
     """
     for name in ["first.yml", "second.yaml"] {
         try yaml.write(to: directory.appendingPathComponent(name), atomically: true, encoding: .utf8)
@@ -230,5 +240,18 @@ func invalidErrorCategoriesFail(error: String) throws {
     let report = try SpecRunner.run(paths: [directory.path])
     #expect(report.passed == 0)
     #expect(report.failed == 0)
-    #expect(report.skipped == 2)
+    #expect(report.lowPassed == 2)
+    #expect(report.lowFailed == 2)
+}
+
+@Test(arguments: ["invalid-stack-index", "stack-index-out-of-bounds"])
+func proposedIndexErrorCategoriesAreRecognized(error: String) throws {
+    let report = try SpecRunner.evaluate(yaml: """
+    name: proposed index error
+    confidence: medium
+    code: missing
+    error: \(error)
+    """)
+    #expect(report.failed == 1)
+    #expect(report.results[0].contains("error expected \(error), got"))
 }

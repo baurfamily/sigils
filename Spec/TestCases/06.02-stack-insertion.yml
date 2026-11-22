@@ -1,0 +1,88 @@
+# Low-confidence sketches, not implemented or enforced.
+# Proposed ->?@index preserves destination entries by inserting instead of replacing.
+# The source is still consumed; the ? here would describe destination preservation.
+# Tentative gap convention, resolved BEFORE removing the top source:
+# For [10, 20, 30], gaps 0, 1, 2, 3 are above 30, below 30, below 20, below 10.
+# Negative gap indices count upward from the bottom: -1 is below 10, -2 above 10.
+# Removing the source shifts the insertion gap as needed; it never drops other data.
+# Syntax, gap indexing, and how source preservation would combine remain open.
+---
+name: insertion preserves the destination value rather than replacing it
+confidence: low
+code: |
+  10 20 30 ->?@2
+output:
+stack: [10, 30, 20]
+---
+name: insertion at the top gap returns the source to top
+confidence: low
+code: |
+  10 20 30 ->?@0
+output:
+stack: [10, 20, 30]
+---
+name: insertion immediately below its original source is a no-op
+confidence: low
+code: |
+  10 20 30 ->?@1
+output:
+stack: [10, 20, 30]
+---
+name: the bottommost gap allows inserting below every remaining value
+confidence: low
+commentary: Gap 3 is valid on this original stack, although entry index 3 would be out of bounds.
+code: |
+  10 20 30 ->?@3
+output:
+stack: [30, 10, 20]
+---
+name: negative one addresses the bottommost gap
+confidence: low
+code: |
+  10 20 30 ->?@-1
+output:
+stack: [30, 10, 20]
+---
+name: negative two addresses the gap above the bottom entry
+confidence: low
+code: |
+  10 20 30 ->?@-2
+output:
+stack: [10, 30, 20]
+---
+name: insertion accepts a variable gap index
+confidence: low
+code: |
+  3 ->gap
+  10 20 30 ->?@gap
+output:
+stack: [30, 10, 20]
+---
+name: insertion preserves null destination data
+confidence: low
+code: |
+  10 5 0 / 30 ->?@2
+output:
+stack: [10, 30, null]
+---
+name: insertion supports a single source value
+confidence: low
+code: |
+  5 ->?@0
+output:
+stack: [5]
+---
+name: insertion requires a source
+confidence: low
+code: |
+  ->?@0
+error: stack-underflow
+stack: []
+---
+name: an invalid insertion gap preserves the source and destination entries
+confidence: low
+code: |
+  10 20 30 ->?@4
+error: stack-index-out-of-bounds
+stack: [10, 20, 30]
+---

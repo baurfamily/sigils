@@ -1,0 +1,191 @@
+# Medium-confidence behavior for review; random access is not implemented yet.
+# Indices refer to the current stack: 0 is top, 1 is next, -1 is bottom.
+# @index removes the selected entry and pushes its value on top.
+# ?@index preserves the selected entry and pushes a copy of its value on top.
+# Other entries retain their relative order. Indices must be finite whole numbers.
+---
+name: moving the top to itself is a no-op
+confidence: medium
+code: |
+  10 20 30 @0
+output:
+stack: [10, 20, 30]
+---
+name: moving the second value to top exchanges the top two
+confidence: medium
+code: |
+  10 20 30 @1
+output:
+stack: [10, 30, 20]
+---
+name: moving a deeper value preserves the order of intervening values
+confidence: medium
+code: |
+  10 20 30 40 @2
+output:
+stack: [10, 30, 40, 20]
+---
+name: negative one selects the bottom
+confidence: medium
+code: |
+  10 20 30 @-1
+output:
+stack: [20, 30, 10]
+---
+name: negative two selects the second value from bottom
+confidence: medium
+code: |
+  10 20 30 @-2
+output:
+stack: [10, 30, 20]
+---
+name: a prefixed question mark duplicates the top
+confidence: medium
+code: |
+  10 20 30 ?@0
+output:
+stack: [10, 20, 30, 30]
+---
+name: a prefixed question mark copies a deeper value
+confidence: medium
+code: |
+  10 20 30 ?@1
+output:
+stack: [10, 20, 30, 20]
+---
+name: copying the bottom leaves the original entry in place
+confidence: medium
+code: |
+  10 20 30 ?@-1
+output:
+stack: [10, 20, 30, 10]
+---
+name: indices are recalculated after each move
+confidence: medium
+commentary: This sequence swaps the top with the third-from-top, not by primitive swapping.
+code: |
+  10 20 30 40 @2 @2 @1
+output:
+stack: [10, 40, 30, 20]
+---
+name: a variable supplies the index without consuming its binding
+confidence: medium
+code: |
+  2 ->depth
+  10 20 30 @depth
+  depth
+output:
+stack: [20, 30, 10, 2]
+---
+name: a negative variable index can copy the bottom
+confidence: medium
+code: |
+  -1 ->depth
+  10 20 30 ?@depth
+output:
+stack: [10, 20, 30, 10]
+---
+name: indexed move composes with ordinary storage
+confidence: medium
+code: |
+  10 20 30 @1 ->x
+  x
+output:
+stack: [10, 30, 20]
+---
+name: indexed copy composes with ordinary storage
+confidence: medium
+code: |
+  10 20 30 ?@1 ->x
+  x
+output:
+stack: [10, 20, 30, 20]
+---
+name: indexed copy is a value snapshot
+confidence: medium
+code: |
+  10 20 30 ?@1
+  2 +
+output:
+stack: [10, 20, 30, 22]
+---
+name: string values can be moved
+confidence: medium
+code: |
+  "first" "second" "third" @-1
+output:
+stack: [second, third, first]
+---
+name: null is a present value that can be copied
+confidence: medium
+code: |
+  10 5 0 / 30 ?@1
+output:
+stack: [10, null, 30, null]
+---
+name: out-of-range positive index leaves the stack intact
+confidence: medium
+code: |
+  10 20 30 @3
+error: stack-index-out-of-bounds
+stack: [10, 20, 30]
+---
+name: out-of-range negative index leaves the stack intact
+confidence: medium
+code: |
+  10 20 30 @-4
+error: stack-index-out-of-bounds
+stack: [10, 20, 30]
+---
+name: copying from an empty stack is out of bounds
+confidence: medium
+code: |
+  ?@0
+error: stack-index-out-of-bounds
+stack: []
+---
+name: a fractional literal is not a valid index
+confidence: medium
+code: |
+  10 20 30 @1.5
+error: invalid-stack-index
+stack: [10, 20, 30]
+---
+name: a fractional variable is not a valid index
+confidence: medium
+code: |
+  0.5 ->depth
+  10 20 30 @depth
+error: invalid-stack-index
+stack: [10, 20, 30]
+---
+name: a string variable is not a valid index
+confidence: medium
+code: |
+  "1" ->depth
+  10 20 30 @depth
+error: invalid-stack-index
+stack: [10, 20, 30]
+---
+name: a null variable is not a valid index
+confidence: medium
+code: |
+  5 0 / ->depth
+  10 20 30 @depth
+error: invalid-stack-index
+stack: [10, 20, 30]
+---
+name: an undefined index variable is an error
+confidence: medium
+code: |
+  10 20 30 @missing
+error: undefined-variable
+stack: [10, 20, 30]
+---
+name: an index must follow the access sigil
+confidence: medium
+code: |
+  10 20 30 @
+error: syntax-error
+stack: [10, 20, 30]
+---

@@ -82,15 +82,3 @@ error: syntax-error
 stack:
   - 5
 ---
-name: possible explicit stack destination for duplication
-confidence: low
-commentary: |
-  Deferred idea, not implemented: _ might eventually mean write to the stack.
-  Currently _ is an ordinary variable name. This case must not be executed.
-code: |
-  5 ?->_
-output:
-stack:
-  - 5
-  - 5
----

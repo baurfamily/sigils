@@ -98,7 +98,8 @@ func main() throws -> Bool {
         let report = try SpecRunner.run(paths: arguments.count == 1
                                        ? ["Spec/TestCases"] : Array(arguments.dropFirst()))
         for result in report.results { writeOutput(result + "\n") }
-        writeOutput("\(report.passed) passed, \(report.failed) failed, \(report.skipped) skipped\n")
+        writeOutput("\(report.passed) passed, \(report.failed) failed; "
+                    + "low confidence: \(report.lowPassed) passed, \(report.lowFailed) failed (non-blocking)\n")
         return report.failed == 0
     case "run":
         guard arguments.count == 2 else { throw CLIError(description: usage) }

@@ -1,0 +1,134 @@
+# Medium-confidence behavior for review; indexed writes are not implemented yet.
+# Resolve the destination against the stack BEFORE consuming the top source.
+# ->@index replaces the selected entry and removes the source from its old position.
+# Writing the top to itself is a no-op. Other entries retain their relative order.
+# ?->@index preserves the source while replacing the destination.
+---
+name: replacement resolves its destination before source consumption
+confidence: medium
+code: |
+  10 20 30 ->@1
+output:
+stack: [10, 30]
+---
+name: replacement at a deeper index preserves intervening values
+confidence: medium
+code: |
+  10 20 30 40 ->@2
+output:
+stack: [10, 40, 30]
+---
+name: replacement at negative one overwrites the bottom
+confidence: medium
+code: |
+  10 20 30 ->@-1
+output:
+stack: [30, 20]
+---
+name: replacement supports other negative indices
+confidence: medium
+code: |
+  10 20 30 40 ->@-2
+output:
+stack: [10, 40, 30]
+---
+name: writing the top to itself preserves it
+confidence: medium
+code: |
+  10 20 30 ->@0
+output:
+stack: [10, 20, 30]
+---
+name: self-replacement also works on a single entry
+confidence: medium
+code: |
+  5 ->@-1
+output:
+stack: [5]
+---
+name: replacement uses a variable index
+confidence: medium
+code: |
+  1 ->depth
+  10 20 30 ->@depth
+  depth
+output:
+stack: [10, 30, 1]
+---
+name: prefix peek preserves the source while replacing the destination
+confidence: medium
+code: |
+  10 20 30 ?->@1
+output:
+stack: [10, 30, 30]
+---
+name: preserving source during bottom replacement
+confidence: medium
+code: |
+  10 20 30 ?->@-1
+output:
+stack: [30, 20, 30]
+---
+name: preserving source during self-replacement does not duplicate
+confidence: medium
+code: |
+  10 20 30 ?->@0
+output:
+stack: [10, 20, 30]
+---
+name: null can replace a numeric entry
+confidence: medium
+code: |
+  10 20 5 0 / ->@1
+output:
+stack: [10, null]
+---
+name: a numeric value can replace null
+confidence: medium
+code: |
+  10 5 0 / 30 ->@1
+output:
+stack: [10, 30]
+---
+name: replacement supports strings
+confidence: medium
+code: |
+  "first" "second" "third" ->@-1
+output:
+stack: [third, second]
+---
+name: replacement on an empty stack has no source
+confidence: medium
+code: |
+  ->@0
+error: stack-underflow
+stack: []
+---
+name: invalid positive destination does not consume the source
+confidence: medium
+code: |
+  10 20 30 ->@3
+error: stack-index-out-of-bounds
+stack: [10, 20, 30]
+---
+name: invalid negative destination does not consume the source
+confidence: medium
+code: |
+  10 20 30 ->@-4
+error: stack-index-out-of-bounds
+stack: [10, 20, 30]
+---
+name: a fractional destination does not consume the source
+confidence: medium
+code: |
+  10 20 30 ->@0.5
+error: invalid-stack-index
+stack: [10, 20, 30]
+---
+name: an undefined destination index does not consume the source
+confidence: medium
+code: |
+  10 20 30 ->@missing
+error: undefined-variable
+stack: [10, 20, 30]
+---

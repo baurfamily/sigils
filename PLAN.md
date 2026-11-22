@@ -18,6 +18,9 @@ specs without explicit permission, and stop feature work whenever existing cases
 - Attached peek storage (`?->name`) inspects the top value without consuming or
   duplicating it; the destination receives its current value. Uses the same
   naming and underflow rules as consuming storage.
+- Random access moves (`@index`) or copies (`?@index`) an entry to the top. Indexed
+  storage replaces destinations (`->@index`, `?->@index`). Experimental consuming
+  insertion (`->?@index`) is available for REPL exploration at low confidence.
 - First-error stopping with successful prefix state/output retained. Failed
   instructions retain operands; REPL errors are structured stack values, while
   scripts stop with a diagnostic and nonzero exit.
@@ -38,8 +41,8 @@ remain pending.
    as new cases arise. `5 ->x` consumes the top value; bare `x` pushes its current
    value rather than a reference. Undefined reads, bare `->`, and detached `-> x`
    are errors. All variable cases and category assertions now pass.
-   Low-confidence cases record deferred ideas and are explicitly skipped; medium/high
-   and unmarked cases remain enforced. All case schemas are validated before skipping.
+   Low-confidence cases run and report results without behavioral failures blocking
+   the suite; medium/high and unmarked cases remain blocking. Invalid schemas still fail.
    Storage underflow remains medium confidence; keep it under review during loop design.
 3. Revisit numeric semantics: binary floating point versus decimal/arbitrary-precision
    numbers, overflow, numeric syntax, and formatting. True division using `Double`
@@ -47,13 +50,10 @@ remain pending.
 4. Add designer-approved cases for strings and lexical rules: escapes, quote pairs,
    interpolation, symbols, comments, and invalid input. Implement only those rules.
 5. Discuss random stack access and possible inspection modifiers separately from
-   functions. `?->name` is implemented; bare `?` is not an operation. For `@`, settle
-   index direction, bounds, whether it selects versus pushes a value, and how it
-   interacts with consumption/inspection before approving syntax.
-   Review the medium-confidence cases in `06.00-stack-reading.yml` and
-   `06.01-stack-replacement.yml` next. They are enforced and will fail until random
-   access is implemented; resolve these failures before unrelated feature work.
-   `06.02-stack-insertion.yml` contains low-confidence sketches and is skipped.
+   functions. Move/copy and replacement cases in `06.00-stack-reading.yml` and
+   `06.01-stack-replacement.yml` now pass. Try the low-confidence insertion syntax
+   from `06.02-stack-insertion.yml` in the REPL before finalizing the mnemonic and
+   gap indexing. Its cases execute as non-blocking experiments, not skipped tests.
 6. Resolve function stack ownership, arguments, return counts, and scope before
    implementation. Private function stacks with explicit transfers may be easier
    to reason about than shared mutable stacks, but this needs designer approval.
@@ -71,29 +71,29 @@ remain pending.
 - Replacement cases propose `->@index` consuming the top source and replacing the
   selected entry, with the destination resolved before consumption. Self-replacement
   is a no-op; `?->@index` preserves the source while replacing the destination.
-  These rules are medium confidence and not implemented yet.
+  These rules are medium confidence and implemented.
 - Low-confidence insertion syntax `->?@index` could preserve the destination entry
   rather than replace it, while still consuming the source. This is a plausible
   meaning of "do not consume" applied to the destination, not a settled modifier rule.
-  The insertion file explicitly sketches gap indices: zero above top, positive
+  The insertion implementation uses the file's sketched gap indices: zero above top, positive
   indices counting downward, negative one below bottom. Resolve against the original
-  stack and adjust for source removal. Gap indexing and modifier placement are open.
-- `invalid-stack-index` and `stack-index-out-of-bounds` are registered for schema
-  validation of these proposals; no runtime index handling exists yet. Indexed writes
+  stack and adjust for source removal. Gap indexing and modifier placement remain
+  provisional. Combined source-preserving insertion `?->?@index` is rejected until
+  its semantics are discussed.
+- `invalid-stack-index` and `stack-index-out-of-bounds` are implemented. Indexed writes
   without a source expect `stack-underflow`. Out-of-bounds/invalid-index failures
   should leave the source and other entries unchanged.
 - `?` generally signals inspection without consumption and is a modifier, not a
-  standalone duplicate operator. Only storage is supported initially; arithmetic,
+  standalone duplicate operator. Storage and copy-to-top are supported; arithmetic,
   printing, and comparison modifiers require separate decisions about which operands
   are preserved and what results are produced.
 - Conditionals remain separate design discussion: inspecting a value to decide a
   branch is a motivation for `?`, but this does not establish branch syntax, comparison
   semantics, truth values, or whether the inspected value remains for the chosen body.
   Random access may inform these decisions; do not bundle functions into that discussion.
-- Low-confidence idea: `_` as a destination could eventually mean write to the stack,
-  making `?->_` an explicit duplication form. Currently `_` is an ordinary variable
-  and this interpretation is not implemented. The example in `05-peeking.yml` is
-  skipped, not a passing test or an approved feature.
+- `_` remains an ordinary variable, not a special stack destination. The speculative
+  duplication case was removed in favor of `?@0`; keep indexed copying rather than
+  introducing a special variable.
 - Interim error policy implemented: errors become structured stack
   values in the REPL; scripts stop on an error until try/rescue semantics exist.
   Preserve the current arithmetic/null policy rather than introducing new arithmetic

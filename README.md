@@ -83,7 +83,7 @@ rule pending loop design. References, forward storage, and nested scopes are def
 ### Peeking
 
 `?` is a modifier meaning inspect without consuming, not a standalone duplication
-instruction. Initially it only modifies attached storage: `?->name`. The name
+instruction. For variable storage, use `?->name`. The name
 follows the same rules as `->name`, and an empty stack is an underflow error.
 The modifier and destination must be attached; `? ->x`, `?-> x`, and bare `?` fail.
 
@@ -96,10 +96,48 @@ This prints `10`: peeking leaves `5` available for the consuming storage. It doe
 not push an extra value. The binding captures a value, not a live stack reference.
 Strings, null, and REPL error values can also be inspected this way.
 
-Modifiers on arithmetic or printing, random access, and conditionals are not
-implemented. `_` remains an ordinary variable name: `5 ?->_` stores into `_` and
-leaves just one `5` on the stack. Its possible future meaning as a stack destination
-is recorded only as a low-confidence case.
+Modifiers on arithmetic or printing and conditionals are not
+implemented. `_` remains an ordinary variable name, not a special stack destination.
+Use `?@0` to duplicate the top entry.
+
+### Random stack access
+
+`@index` moves an entry to the top; `?@index` copies it to the top, preserving the
+original. Indices refer to the current stack: `0` is the top, `1` the next entry,
+`-1` the bottom, and `-2` the next entry from the bottom. Other entries keep their
+relative order. An attached variable can supply the index: `@depth` or `?@depth`.
+Indices must be finite whole numbers; strings, null, and fractional indices fail.
+
+Indexed storage resolves its destination **before** consuming the top source.
+`->@index` replaces the destination and removes the source from its old position;
+`?->@index` preserves the source. Writing the top back to itself is a no-op.
+
+Each example below independently starts with `10 20 30`:
+
+| Operation | Resulting stack |
+| --- | --- |
+| `@1` | `10 30 20` |
+| `?@0` | `10 20 30 30` |
+| `->@1` | `10 30` |
+| `?->@1` | `10 30 30` |
+| `->?@2` | `10 30 20` |
+| `->?@3` | `30 10 20` |
+
+**Experimental insertion:** `->?@index` moves the top value into a gap without
+discarding any destination entry. Gaps are resolved against the original stack:
+`0` is above the top, `1` immediately below it, and `count` below the bottom.
+Negative gap indices count upward from the bottom: `-1` is the bottommost gap.
+Removing the source adjusts the gap as necessary; inserting into gap `0` or `1`
+therefore leaves the original stack unchanged.
+
+Insertion syntax and gap rules remain low confidence but are available in the REPL.
+Combining source preservation and insertion (`?->?@index`) is not supported yet.
+The behavior files are `06.00-stack-reading.yml`, `06.01-stack-replacement.yml`,
+and `06.02-stack-insertion.yml`; all now execute, with low-confidence results
+reported separately and non-blocking.
+
+Invalid or out-of-bounds access leaves stack entries untouched. Reads from an empty
+stack are out of bounds; indexed writes without a source report stack underflow.
 
 Numbers currently use finite IEEE-754 `Double` values. Decimal arithmetic may round,
 and integers beyond 2^53 are not all exactly representable. Whole-number output omits
@@ -116,7 +154,7 @@ a display label, not language keyword syntax. There is no null literal yet.
 
 Strings currently contain literal text only: escapes, interpolation, smart quotes,
 single quotes, and alternative delimiters are not implemented. Comments,
-arrays, user functions, loops, other arithmetic operators, and random stack access remain
+arrays, user functions, loops, and other arithmetic operators remain
 unimplemented pending confirmed cases and design decisions.
 
 ## YAML behavior cases
@@ -141,8 +179,9 @@ stack: []
 
 Successful cases require `name`, `code`, `output`, and `stack`. An optional `commentary`
 field is documentation only. Optional `confidence` is `low`, `medium`, or `high`.
-Low-confidence cases are schema-validated but are not executed or asserted; they
-are explicitly reported as `SKIP` and counted separately from passes and failures.
+Low-confidence cases are executed and asserted, but their behavioral failures do
+not fail the suite or its exit status. Their results are marked non-blocking and
+counted separately in the summary.
 Medium/high cases and cases without confidence are enforced normally.
 Malformed YAML or case schemas still fail, even at low confidence.
 Null `output` means no output, and null `stack` means
@@ -173,6 +212,7 @@ and data stack state at failure, before the REPL-only error value would be appen
 An unexpected, absent, or different error fails the case. Error categories currently
 include `undefined-variable`, `missing-attached-destination`, `invalid-destination`,
 `stack-underflow`, `type-error`, `syntax-error`, `numeric-overflow`, and `unknown-function`.
+Index failures use `invalid-stack-index` or `stack-index-out-of-bounds`.
 The structured error's line/column are tested in Swift; YAML location assertions
 and error values inside expected stacks are not supported yet.
 

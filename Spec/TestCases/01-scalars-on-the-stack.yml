@@ -1,0 +1,29 @@
+---
+name: numbers
+code: |
+  5
+  12.2
+  -8
+  0.1
+output:
+stack:
+  - 5
+  - 12.2
+  - -8
+  - 0.1
+---
+name: simple string
+code: |
+  "hello, world"
+output:
+stack:
+  - hello, world
+---
+name: print value
+commentary: The `print` function consumes from the stack.
+code: |
+  "hello" !print
+output: hello
+stack:
+---
+

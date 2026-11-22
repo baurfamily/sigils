@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:sigils}",
+      "name": "Debug sigils",
+      "target": "sigils",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug sigils"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:sigils}",
+      "name": "Release sigils",
+      "target": "sigils",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release sigils"
+    }
+  ]
+}

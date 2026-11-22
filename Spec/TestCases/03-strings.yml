@@ -1,0 +1,22 @@
+---
+name: simple string
+code: |
+  "hello, world"
+output:
+stack:
+  - hello, world
+---
+name: string concatenation
+code: |
+  "hello" + " " + "world"
+output: hello world
+stack:
+---
+name: print value
+commentary: The `print` function consumes from the stack.
+code: |
+  "hello" !print
+output: hello
+stack:
+---
+

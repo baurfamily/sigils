@@ -1,0 +1,30 @@
+---
+name: addition
+code: |
+  1 + 4
+output:
+stack:
+  - 5
+---
+name: subtraction
+code: |
+  4 - 1
+output:
+stack:
+  - 3
+---
+name: multiplication
+code: |
+  2 * 3
+output:
+stack:
+  - 6
+---
+name: division
+code: |
+  8 / 2
+output:
+stack:
+  - 4
+---
+

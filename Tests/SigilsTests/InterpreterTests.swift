@@ -183,3 +183,63 @@ func invalidArithmeticStopsExecution(source: String) throws {
     #expect(result.error?.code == .typeError)
     #expect(interpreter.stack == [.number(99), .string("hello"), .number(4)])
 }
+
+@Test func peekStoresOnlyTopWithoutChangingStack() throws {
+    var interpreter = Interpreter()
+    _ = try interpreter.execute("99 5 ?->x")
+    #expect(interpreter.stack == [.number(99), .number(5)])
+    #expect(interpreter.variables["x"] == .number(5))
+    _ = try interpreter.execute("->y x y +")
+    #expect(interpreter.stack == [.number(99), .number(10)])
+}
+
+@Test func peekPersistsAcrossInteractiveSubmissions() throws {
+    var interpreter = Interpreter()
+    _ = interpreter.executeInteractive("5")
+    _ = interpreter.executeInteractive("?->x")
+    #expect(try interpreter.execute("!print x !print") == "5\n5\n")
+}
+
+@Test(arguments: ["?", "? ->x", "?+", "?!print", "??->x"])
+func unsupportedPeekModifiersPreserveState(source: String) throws {
+    var interpreter = Interpreter()
+    _ = try interpreter.execute("5")
+    let result = interpreter.evaluate(source)
+    #expect(result.error?.code == .syntaxError)
+    #expect(interpreter.stack == [.number(5)])
+    #expect(interpreter.variables.isEmpty)
+}
+
+@Test func malformedPeekDoesNotRebindOrReadDetachedName() throws {
+    var interpreter = Interpreter()
+    _ = try interpreter.execute("8 ->x")
+    let result = interpreter.evaluate("5\n?-> x")
+    #expect(result.error?.code == .missingAttachedDestination)
+    #expect(result.error?.line == 2)
+    #expect(result.error?.column == 1)
+    #expect(interpreter.stack == [.number(5)])
+    #expect(interpreter.variables["x"] == .number(8))
+}
+
+@Test func emptyPeekDoesNotRebind() throws {
+    var interpreter = Interpreter()
+    _ = try interpreter.execute("8 ->x")
+    #expect(interpreter.evaluate("?->x").error?.code == .stackUnderflow)
+    #expect(interpreter.variables["x"] == .number(8))
+    #expect(interpreter.stack.isEmpty)
+}
+
+@Test func peekCanInspectStructuredErrorWithoutConsumingIt() throws {
+    var interpreter = Interpreter()
+    let failure = try #require(interpreter.executeInteractive("missing").error)
+    _ = try interpreter.execute("?->failure")
+    #expect(interpreter.stack == [.error(failure)])
+    #expect(interpreter.variables["failure"] == .error(failure))
+}
+
+@Test func underscoreRemainsAnOrdinaryDestination() throws {
+    var interpreter = Interpreter()
+    _ = try interpreter.execute("5 ?->_")
+    #expect(interpreter.stack == [.number(5)])
+    #expect(interpreter.variables["_"] == .number(5))
+}

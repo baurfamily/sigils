@@ -15,6 +15,9 @@ specs without explicit permission, and stop feature work whenever existing cases
 - Attached postfix storage (`->x`), value reads, and rebinding in one interpreter
   namespace. Case-sensitive ASCII names start with a letter/underscore and continue
   with letters, digits, or underscores; REPL bindings persist across submissions.
+- Attached peek storage (`?->name`) inspects the top value without consuming or
+  duplicating it; the destination receives its current value. Uses the same
+  naming and underflow rules as consuming storage.
 - First-error stopping with successful prefix state/output retained. Failed
   instructions retain operands; REPL errors are structured stack values, while
   scripts stop with a diagnostic and nonzero exit.
@@ -35,15 +38,18 @@ remain pending.
    as new cases arise. `5 ->x` consumes the top value; bare `x` pushes its current
    value rather than a reference. Undefined reads, bare `->`, and detached `-> x`
    are errors. All variable cases and category assertions now pass.
-   Optional low/medium/high confidence metadata never skips or relaxes a case.
+   Low-confidence cases record deferred ideas and are explicitly skipped; medium/high
+   and unmarked cases remain enforced. All case schemas are validated before skipping.
    Storage underflow remains medium confidence; keep it under review during loop design.
 3. Revisit numeric semantics: binary floating point versus decimal/arbitrary-precision
    numbers, overflow, numeric syntax, and formatting. True division using `Double`
    is currently confirmed, but not exact decimal or large-integer arithmetic.
 4. Add designer-approved cases for strings and lexical rules: escapes, quote pairs,
    interpolation, symbols, comments, and invalid input. Implement only those rules.
-5. Discuss consuming versus peeking/random stack access.
-   Specify underflow, index direction, and the meaning of bare `?`/`@` forms first.
+5. Discuss random stack access and possible inspection modifiers separately from
+   functions. `?->name` is implemented; bare `?` is not an operation. For `@`, settle
+   index direction, bounds, whether it selects versus pushes a value, and how it
+   interacts with consumption/inspection before approving syntax.
 6. Resolve function stack ownership, arguments, return counts, and scope before
    implementation. Private function stacks with explicit transfers may be easier
    to reason about than shared mutable stacks, but this needs designer approval.
@@ -54,6 +60,18 @@ remain pending.
 
 ## Design notes to revisit
 
+- `?` generally signals inspection without consumption and is a modifier, not a
+  standalone duplicate operator. Only storage is supported initially; arithmetic,
+  printing, and comparison modifiers require separate decisions about which operands
+  are preserved and what results are produced.
+- Conditionals remain separate design discussion: inspecting a value to decide a
+  branch is a motivation for `?`, but this does not establish branch syntax, comparison
+  semantics, truth values, or whether the inspected value remains for the chosen body.
+  Random access may inform these decisions; do not bundle functions into that discussion.
+- Low-confidence idea: `_` as a destination could eventually mean write to the stack,
+  making `?->_` an explicit duplication form. Currently `_` is an ordinary variable
+  and this interpretation is not implemented. The example in `05-peeking.yml` is
+  skipped, not a passing test or an approved feature.
 - Interim error policy implemented: errors become structured stack
   values in the REPL; scripts stop on an error until try/rescue semantics exist.
   Preserve the current arithmetic/null policy rather than introducing new arithmetic

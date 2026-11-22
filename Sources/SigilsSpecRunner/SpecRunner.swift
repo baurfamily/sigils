@@ -5,6 +5,7 @@ import Yams
 public struct SpecReport {
     public var passed = 0
     public var failed = 0
+    public var skipped = 0
     public var results: [String] = []
 }
 
@@ -23,6 +24,7 @@ public enum SpecRunner {
                 let fileReport = try evaluate(yaml: yaml, label: file)
                 report.passed += fileReport.passed
                 report.failed += fileReport.failed
+                report.skipped += fileReport.skipped
                 report.results += fileReport.results
             } catch {
                 report.failed += 1
@@ -46,6 +48,11 @@ public enum SpecRunner {
             do {
                 let spec = try decode(node)
                 location += " (\(spec.name))"
+                if spec.confidence == .low {
+                    report.skipped += 1
+                    report.results.append("SKIP \(location): low confidence")
+                    continue
+                }
                 var interpreter = Interpreter()
                 let execution = interpreter.evaluate(spec.code)
                 let output = execution.output
@@ -93,6 +100,11 @@ public enum SpecRunner {
         let exactOutput: Bool
         let stack: [Value]?
         let error: ErrorCode?
+        let confidence: Confidence
+    }
+
+    private enum Confidence: String {
+        case low, medium, high
     }
 
     private static func decode(_ node: Node) throws -> Case {
@@ -105,12 +117,14 @@ public enum SpecRunner {
             }
             guard seen.insert(key).inserted else { throw invalid("Duplicate field \(key)") }
         }
-        if let confidence = node["confidence"] {
-            guard confidence.tag == Tag(.str), let text = confidence.string,
-                  ["low", "medium", "high"].contains(text) else {
+        let confidence: Confidence
+        if let node = node["confidence"] {
+            guard node.tag == Tag(.str), let text = node.string,
+                  let value = Confidence(rawValue: text) else {
                 throw invalid("confidence must be low, medium, or high")
             }
-        }
+            confidence = value
+        } else { confidence = .high }
         guard let name = node["name"], name.tag == Tag(.str),
               let nameText = name.string, !nameText.isEmpty else {
             throw invalid("name must be a nonempty string")
@@ -143,7 +157,8 @@ public enum SpecRunner {
         let style = node["output"]?.scalar?.style
         return Case(
             name: nameText, code: source, output: outputText,
-            exactOutput: style == .literal || style == .folded, stack: stack, error: expectedError
+            exactOutput: style == .literal || style == .folded, stack: stack,
+            error: expectedError, confidence: confidence
         )
     }
 

@@ -1,0 +1,96 @@
+---
+name: peek stores without consuming
+confidence: high
+code: |
+  5 ?->x
+output:
+stack:
+  - 5
+---
+name: peek followed by consuming storage reads the same value
+confidence: high
+code: |
+  1 5 ?->copy ->original
+output:
+stack:
+  - 1
+---
+name: repeated peeks preserve the entire stack
+confidence: high
+code: |
+  99 5 ?->first ?->second
+  first second +
+output:
+stack:
+  - 99
+  - 5
+  - 10
+---
+name: peek a string then use it
+confidence: high
+code: |
+  "hello" ?->greeting
+  !print
+  greeting !print
+output: |
+  hello
+  hello
+stack: []
+---
+name: peek a null without consuming it
+confidence: high
+code: |
+  5 0 / ?->result
+  result
+output:
+stack:
+  - null
+  - null
+---
+name: peeked value is not a live stack reference
+confidence: high
+code: |
+  5 ?->x
+  2 +
+  x
+output:
+stack:
+  - 7
+  - 5
+---
+name: peek requires an attached destination
+confidence: high
+code: |
+  5 ?-> x
+error: missing-attached-destination
+stack:
+  - 5
+---
+name: peek on an empty stack is an underflow
+confidence: medium
+code: |
+  ?->x
+error: stack-underflow
+stack: []
+---
+name: bare question mark means nothing
+commentary: We considered ? as a potential stand-alone duplication instruction, but currently we think this should behave as a modifier to some other instruction only
+confidence: high
+code: |
+  5 ?
+error: syntax-error
+stack:
+  - 5
+---
+name: possible explicit stack destination for duplication
+confidence: low
+commentary: |
+  Deferred idea, not implemented: _ might eventually mean write to the stack.
+  Currently _ is an ordinary variable name. This case must not be executed.
+code: |
+  5 ?->_
+output:
+stack:
+  - 5
+  - 5
+---

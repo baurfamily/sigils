@@ -88,7 +88,7 @@ func invalidYAMLCannotSilentlyPass(yaml: String) {
 }
 
 @Test(arguments: ["low", "medium", "high"])
-func confidenceMetadataDoesNotSkipCases(confidence: String) throws {
+func confidenceControlsExecution(confidence: String) throws {
     let report = try SpecRunner.evaluate(yaml: """
     name: matching case
     confidence: \(confidence)
@@ -102,9 +102,17 @@ func confidenceMetadataDoesNotSkipCases(confidence: String) throws {
     output:
     stack: [4]
     """)
-    #expect(report.passed == 1)
-    #expect(report.failed == 1)
-    #expect(report.results[1].contains("stack expected"))
+    if confidence == "low" {
+        #expect(report.passed == 0)
+        #expect(report.failed == 0)
+        #expect(report.skipped == 2)
+        #expect(report.results.allSatisfy { $0.hasPrefix("SKIP ") })
+    } else {
+        #expect(report.passed == 1)
+        #expect(report.failed == 1)
+        #expect(report.skipped == 0)
+        #expect(report.results[1].contains("stack expected"))
+    }
 }
 
 @Test(arguments: ["unknown", "High", "null", "1", "[high]"])
@@ -173,4 +181,54 @@ func invalidErrorCategoriesFail(error: String) throws {
     #expect(report.failed == 1)
     #expect(report.results[0].contains("output expected"))
     #expect(report.results[0].contains("stack expected"))
+}
+
+@Test func lowConfidenceCaseDoesNotExecuteUnsupportedSyntax() throws {
+    let report = try SpecRunner.evaluate(yaml: """
+    name: future syntax
+    confidence: low
+    code: "not-implemented"
+    output: future output
+    stack: [99]
+    """)
+    #expect(report.passed == 0)
+    #expect(report.failed == 0)
+    #expect(report.skipped == 1)
+}
+
+@Test func lowConfidenceStillRequiresValidCaseSchema() throws {
+    let report = try SpecRunner.evaluate(yaml: """
+    name: malformed draft
+    confidence: low
+    code: ""
+    output:
+    stack: []
+    unexpected: typo
+    """)
+    #expect(report.failed == 1)
+    #expect(report.skipped == 0)
+}
+
+@Test func skippedCountsAggregateAcrossFiles() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("sigils-confidence-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+    defer {
+        do { try FileManager.default.removeItem(at: directory) }
+        catch { Issue.record("Failed to remove test directory: \(error)") }
+    }
+    let yaml = """
+    name: deferred case
+    confidence: low
+    code: unknown
+    output:
+    stack: []
+    """
+    for name in ["first.yml", "second.yaml"] {
+        try yaml.write(to: directory.appendingPathComponent(name), atomically: true, encoding: .utf8)
+    }
+    let report = try SpecRunner.run(paths: [directory.path])
+    #expect(report.passed == 0)
+    #expect(report.failed == 0)
+    #expect(report.skipped == 2)
 }

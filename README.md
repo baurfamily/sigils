@@ -45,6 +45,7 @@ No try/rescue, automatic continuation, or general struct syntax is implemented y
 | `"hello" " " + "world" +` | Concatenate strings, leaving the result on the stack without printing. |
 | `"hello" !print` | Consume the top value and print it with a newline. |
 | `5 ->x` | Consume the top value and store it in variable `x`. |
+| `5 ?->x` | Inspect the top value and store it in `x` without removing it. |
 | `x` | Push the current stored value without consuming or modifying the binding. |
 | Spaces and newlines | Separate instructions; `1 4+` also works. |
 
@@ -79,6 +80,27 @@ Undefined reads are errors, whereas reading a stored null succeeds. Storing with
 an empty stack is currently an underflow error; this remains a medium-confidence
 rule pending loop design. References, forward storage, and nested scopes are deferred.
 
+### Peeking
+
+`?` is a modifier meaning inspect without consuming, not a standalone duplication
+instruction. Initially it only modifies attached storage: `?->name`. The name
+follows the same rules as `->name`, and an empty stack is an underflow error.
+The modifier and destination must be attached; `? ->x`, `?-> x`, and bare `?` fail.
+
+```text
+5 ?->copy ->original
+copy original + !print
+```
+
+This prints `10`: peeking leaves `5` available for the consuming storage. It does
+not push an extra value. The binding captures a value, not a live stack reference.
+Strings, null, and REPL error values can also be inspected this way.
+
+Modifiers on arithmetic or printing, random access, and conditionals are not
+implemented. `_` remains an ordinary variable name: `5 ?->_` stores into `_` and
+leaves just one `5` on the stack. Its possible future meaning as a stack destination
+is recorded only as a low-confidence case.
+
 Numbers currently use finite IEEE-754 `Double` values. Decimal arithmetic may round,
 and integers beyond 2^53 are not all exactly representable. Whole-number output omits
 the `.0` suffix. Numeric equality in specs is exact, not tolerance-based.
@@ -94,7 +116,7 @@ a display label, not language keyword syntax. There is no null literal yet.
 
 Strings currently contain literal text only: escapes, interpolation, smart quotes,
 single quotes, and alternative delimiters are not implemented. Comments,
-arrays, user functions, loops, other arithmetic operators, and stack-access symbols remain
+arrays, user functions, loops, other arithmetic operators, and random stack access remain
 unimplemented pending confirmed cases and design decisions.
 
 ## YAML behavior cases
@@ -118,9 +140,12 @@ stack: []
 ```
 
 Successful cases require `name`, `code`, `output`, and `stack`. An optional `commentary`
-field is documentation only. Optional `confidence` is `low`, `medium`, or `high`;
-it records design confidence only, never skipping cases or weakening assertions.
-Existing cases may omit it. Null `output` means no output, and null `stack` means
+field is documentation only. Optional `confidence` is `low`, `medium`, or `high`.
+Low-confidence cases are schema-validated but are not executed or asserted; they
+are explicitly reported as `SKIP` and counted separately from passes and failures.
+Medium/high cases and cases without confidence are enforced normally.
+Malformed YAML or case schemas still fail, even at low confidence.
+Null `output` means no output, and null `stack` means
 an empty stack. Stack sequences are bottom-to-top and distinguish numbers from
 strings; quote numeric-looking expected strings.
 

@@ -105,19 +105,15 @@ private struct Parser {
 
     mutating func instruction(output: inout String) throws(LanguageError) {
         switch characters[position] {
+        case "?":
+            position += 1
+            guard position + 1 < characters.count,
+                  characters[position] == "-", characters[position + 1] == ">" else {
+                throw error("Peek must modify attached storage: ?->x")
+            }
+            try store(consuming: false)
         case "-" where position + 1 < characters.count && characters[position + 1] == ">":
-            position += 2
-            guard position < characters.count, isIdentifierStart(characters[position]) else {
-                let code: ErrorCode = position == characters.count || characters[position].isWhitespace
-                    ? .missingAttachedDestination : .invalidDestination
-                throw error("Attach a destination name to the arrow: ->x", code: code)
-            }
-            let name = identifier()
-            guard let value = stack.last else {
-                throw error("Storage needs a value on the stack", code: .stackUnderflow)
-            }
-            variables[name] = value
-            stack.removeLast()
+            try store(consuming: true)
         case "-" where position + 1 < characters.count && isDigit(characters[position + 1]):
             stack.append(try scalar())
         case "+", "-", "*", "/":
@@ -158,6 +154,21 @@ private struct Parser {
                 stack.append(try scalar())
             }
         }
+    }
+
+    mutating func store(consuming: Bool) throws(LanguageError) {
+        position += 2
+        guard position < characters.count, isIdentifierStart(characters[position]) else {
+            let code: ErrorCode = position == characters.count || characters[position].isWhitespace
+                ? .missingAttachedDestination : .invalidDestination
+            throw error("Attach a destination name to the arrow: ->x", code: code)
+        }
+        let name = identifier()
+        guard let value = stack.last else {
+            throw error("Storage needs a value on the stack", code: .stackUnderflow)
+        }
+        variables[name] = value
+        if consuming { stack.removeLast() }
     }
 
     func evaluate(_ operation: Character, left: Value, right: Value) throws(LanguageError) -> Value {
